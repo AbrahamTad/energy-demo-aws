@@ -1,0 +1,18 @@
+
+# Python environment
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+.env.*
+
+# Git and editor files
+.git/
+.vscode/
+
+# Logs
+*.log

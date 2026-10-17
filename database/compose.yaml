@@ -1,23 +1,51 @@
-
 services:
+  # PostgreSQL database
   postgres:
     image: postgres:17
     container_name: energy-demo-postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     ports:
       - "127.0.0.1:5433:5432"
+
     volumes:
       - energy-postgres-data:/var/lib/postgresql/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # Python FastAPI backend
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+
+    image: energy-demo-fastapi:v1
+    container_name: energy-demo-api
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+# Keep existing PostgreSQL data
 volumes:
   energy-postgres-data:
     external: true
