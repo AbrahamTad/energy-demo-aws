@@ -33,3 +33,21 @@ crash.log
 .vscode/
 .idea/
 .DS_Store
+
+# Local AWS simulator
+.local/
+
+# Generated Lambda files
+*.zip
+response.json
+
+# Downloaded test files
+aws-examples/*-downloaded.json
+
+# Terraform local files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+terraform-response.json
