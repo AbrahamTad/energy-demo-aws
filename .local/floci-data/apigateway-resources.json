@@ -1,0 +1,42 @@
+{
+  "000000000000/eu-north-1::2bdf3c8491::fe1ca842" : {
+    "id" : "fe1ca842",
+    "apiId" : null,
+    "parentId" : null,
+    "pathPart" : null,
+    "path" : "/",
+    "resourceMethods" : { }
+  },
+  "000000000000/eu-north-1::d06c9636df::db775a95" : {
+    "id" : "db775a95",
+    "apiId" : null,
+    "parentId" : "64a28bf6",
+    "pathPart" : "api",
+    "path" : "/api",
+    "resourceMethods" : { }
+  },
+  "000000000000/eu-north-1::d06c9636df::64a28bf6" : {
+    "id" : "64a28bf6",
+    "apiId" : null,
+    "parentId" : null,
+    "pathPart" : null,
+    "path" : "/",
+    "resourceMethods" : { }
+  },
+  "000000000000/eu-north-1::d06c9636df::4537ed07" : {
+    "id" : "4537ed07",
+    "apiId" : null,
+    "parentId" : "db775a95",
+    "pathPart" : "energy",
+    "path" : "/api/energy",
+    "resourceMethods" : { }
+  },
+  "000000000000/eu-north-1::d06c9636df::f9d0ae24" : {
+    "id" : "f9d0ae24",
+    "apiId" : null,
+    "parentId" : "64a28bf6",
+    "pathPart" : "energy",
+    "path" : "/energy",
+    "resourceMethods" : { }
+  }
+}

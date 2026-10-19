@@ -1,0 +1,10 @@
+{
+  "000000000000/eu-north-1::/aws/lambda/energy-demo-function" : {
+    "logGroupName" : "/aws/lambda/energy-demo-function",
+    "createdTime" : 1792301745041,
+    "retentionInDays" : null,
+    "deletionProtectionEnabled" : false,
+    "kmsKeyId" : null,
+    "tags" : { }
+  }
+}
