@@ -81,6 +81,9 @@ resource "aws_api_gateway_integration" "energy_lambda" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.energy.invoke_arn
+
+  timeout_milliseconds = 29000
+
 }
 
 # Allow API Gateway to invoke our Lambda function
@@ -91,4 +94,25 @@ resource "aws_lambda_permission" "allow_api_gateway" {
   principal     = "apigateway.amazonaws.com"
 
   source_arn = "${aws_api_gateway_rest_api.energy.execution_arn}/*/GET${aws_api_gateway_resource.energy.path}"
+}
+
+# Create an API Gateway deployment
+resource "aws_api_gateway_deployment" "energy" {
+  rest_api_id = aws_api_gateway_rest_api.energy.id
+
+  depends_on = [
+    aws_api_gateway_integration.energy_lambda,
+    aws_lambda_permission.allow_api_gateway
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Create the dev stage
+resource "aws_api_gateway_stage" "dev" {
+  deployment_id = aws_api_gateway_deployment.energy.id
+  rest_api_id   = aws_api_gateway_rest_api.energy.id
+  stage_name    = "dev"
 }
