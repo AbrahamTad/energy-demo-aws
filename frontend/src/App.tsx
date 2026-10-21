@@ -1,15 +1,15 @@
 
 import { useEffect, useState } from 'react'
 
-// Structure of one PostgreSQL record
+// FastAPI records have IDs; Lambda sample records do not.
 type EnergyRecord = {
-  id: number
+  id?: number
   source: string
   production: number
   unit: string
 }
 
-// Structure of the FastAPI response
+// Shared response structure for FastAPI and Lambda.
 type EnergyResponse = {
   project: string
   status: string
@@ -17,10 +17,13 @@ type EnergyResponse = {
 }
 
 function App() {
+  const dataSource = import.meta.env.MODE === 'floci'
+    ? 'Lambda sample data (local Floci API Gateway)'
+    : 'PostgreSQL'
   const [energy, setEnergy] = useState<EnergyResponse | null>(null)
   const [error, setError] = useState('')
 
-  // Get energy records from Python FastAPI
+  // Vite forwards this request to the API selected by the development mode.
   useEffect(() => {
     fetch('/api/energy')
       .then((response) => {
@@ -43,7 +46,7 @@ function App() {
 
       <div className="energy-grid">
         {energy.records.map((record) => (
-          <div className="energy-card" key={record.id}>
+          <div className="energy-card" key={record.id ?? record.source}>
             <h3>{record.source}</h3>
             <p className="production">
               {record.production} {record.unit}
@@ -53,7 +56,7 @@ function App() {
       </div>
 
       <p>API Status: {energy.status}</p>
-      <p>Data source: PostgreSQL</p>
+      <p>Data source: {dataSource}</p>
     </main>
   )
 }
