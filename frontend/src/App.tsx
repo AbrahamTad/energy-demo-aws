@@ -19,7 +19,9 @@ type EnergyResponse = {
 function App() {
   const dataSource = import.meta.env.MODE === 'floci'
     ? 'Lambda sample data (local Floci API Gateway)'
-    : 'PostgreSQL'
+    : import.meta.env.MODE === 'aws'
+      ? 'Lambda sample data (AWS)'
+      : 'PostgreSQL'
   const [energy, setEnergy] = useState<EnergyResponse | null>(null)
   const [error, setError] = useState('')
 

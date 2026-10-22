@@ -1,0 +1,155 @@
+name: Deploy AWS (manual)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: energy-demo-real-aws
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  AWS_DEFAULT_REGION: eu-north-1
+  AWS_EC2_METADATA_DISABLED: 'true'
+  AWS_PAGER: ''
+  CHECKPOINT_DISABLE: '1'
+  TF_IN_AUTOMATION: 'true'
+  TF_WORKSPACE: default
+  TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
+  TF_VAR_budget_email: ${{ vars.AWS_BUDGET_EMAIL }}
+  AWS_API_ID: ${{ vars.AWS_API_ID }}
+  AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+  AWS_CLOUDFRONT_OAC_ID: ${{ vars.AWS_CLOUDFRONT_OAC_ID }}
+
+jobs:
+  preflight:
+    if: github.repository == 'AbrahamTad/energy-demo-aws' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Fail closed if approval protections are unavailable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/aws/check_environment.py
+
+  build:
+    needs: preflight
+    uses: ./.github/workflows/build-aws.yml
+    permissions:
+      contents: read
+
+  plan:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Recheck fresh dispatch and protections before planning credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/aws/check_environment.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: aws-build-${{ github.sha }}
+          path: artifacts/aws/
+      - run: python3 scripts/aws/verify_artifact.py
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: '1.16.5'
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/energy-demo-bootstrap/github-plan
+          aws-region: eu-north-1
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          unset-current-credentials: true
+          role-session-name: energy-demo-plan-${{ github.run_id }}
+      - name: Initialize guarded, separate backend
+        run: python3 scripts/aws/init_backend.py
+      - name: Save exact deployment plan
+        run: |
+          terraform -chdir=infrastructure/terraform-aws plan -input=false -lock-timeout=120s -out=reviewed.tfplan
+          python3 scripts/aws/check_plan.py
+          terraform -chdir=infrastructure/terraform-aws show -no-color reviewed.tfplan > infrastructure/terraform-aws/reviewed-plan.txt
+          cat infrastructure/terraform-aws/reviewed-plan.txt >> "$GITHUB_STEP_SUMMARY"
+          sha256sum infrastructure/terraform-aws/reviewed.tfplan > infrastructure/terraform-aws/reviewed.tfplan.sha256
+          printf '%s\n' "$GITHUB_SHA" > infrastructure/terraform-aws/reviewed-commit.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aws-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            infrastructure/terraform-aws/reviewed.tfplan
+            infrastructure/terraform-aws/reviewed.tfplan.sha256
+            infrastructure/terraform-aws/reviewed-plan.txt
+            infrastructure/terraform-aws/reviewed-commit.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  apply:
+    needs: plan
+    environment: aws-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Require an actual independent approval before obtaining AWS credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/aws/check_environment.py --require-approval
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: aws-build-${{ github.sha }}
+          path: artifacts/aws/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: aws-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: infrastructure/terraform-aws/
+      - name: Verify commit, build and saved plan
+        run: |
+          python3 scripts/aws/verify_artifact.py
+          test "$(cat infrastructure/terraform-aws/reviewed-commit.txt)" = "$GITHUB_SHA"
+          sha256sum --check infrastructure/terraform-aws/reviewed.tfplan.sha256
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: '1.16.5'
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/energy-demo-bootstrap/github-deploy
+          aws-region: eu-north-1
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          unset-current-credentials: true
+          role-session-name: energy-demo-deploy-${{ github.run_id }}
+      - run: python3 scripts/aws/init_backend.py
+      - name: Recheck exact resource IDs and non-destructive saved plan
+        run: python3 scripts/aws/check_plan.py
+      - name: Apply only the reviewed plan
+        run: terraform -chdir=infrastructure/terraform-aws apply -input=false -lock-timeout=120s reviewed.tfplan
+      - name: Upload static frontend and smoke-test the public site
+        run: python3 scripts/aws/publish_frontend.py
