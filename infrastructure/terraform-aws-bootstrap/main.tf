@@ -183,14 +183,13 @@ locals {
     { Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = ["${local.frontend_arn}/*"] },
     { Effect = "Allow", Action = ["lambda:CreateFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:DeleteFunction", "lambda:AddPermission", "lambda:RemovePermission", "lambda:TagResource", "lambda:UntagResource", "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency"], Resource = [local.lambda_arn] },
     { Effect = "Allow", Action = ["iam:CreateRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.lambda_boundary.arn } } },
-    { Effect = "Allow", Action = ["iam:UpdateAssumeRolePolicy", "iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:TagRole", "iam:UntagRole"], Resource = [local.execution_arn] },
+    { Effect = "Allow", Action = ["iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:TagRole", "iam:UntagRole"], Resource = [local.execution_arn] },
     { Effect = "Allow", Action = ["iam:PassRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } } },
     { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource", "logs:TagLogGroup", "logs:UntagLogGroup"], Resource = local.log_arns },
     { Effect = "Allow", Action = ["apigateway:PATCH"], Resource = local.api_root_arns },
     { Effect = "Allow", Action = ["apigateway:POST", "apigateway:PATCH", "apigateway:PUT", "apigateway:DELETE"], Resource = local.api_child_arns },
     { Effect = "Allow", Action = ["cloudfront:UpdateDistribution", "cloudfront:CreateInvalidation"], Resource = local.distribution_arns },
     { Effect = "Allow", Action = ["cloudfront:UpdateOriginAccessControl"], Resource = local.oac_arns },
-    { Effect = "Allow", Action = ["budgets:ModifyBudget", "budgets:TagResource", "budgets:UntagResource", "budgets:ListTagsForResource"], Resource = ["arn:aws:budgets::${var.account_id}:budget/energy-demo-aws-monthly"] }
   ]
 }
 

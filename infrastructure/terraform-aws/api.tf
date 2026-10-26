@@ -9,17 +9,16 @@ resource "aws_cloudwatch_log_group" "api" {
 }
 
 resource "aws_lambda_function" "energy" {
-  function_name                  = local.lambda_name
-  role                           = aws_iam_role.lambda.arn
-  handler                        = "handler.lambda_handler"
-  runtime                        = "python3.12"
-  architectures                  = ["x86_64"]
-  filename                       = "${path.module}/../../artifacts/aws/lambda.zip"
-  source_code_hash               = filebase64sha256("${path.module}/../../artifacts/aws/lambda.zip")
-  memory_size                    = 128
-  timeout                        = 3
-  reserved_concurrent_executions = 2
-  depends_on                     = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.lambda_logs]
+  function_name    = local.lambda_name
+  role             = aws_iam_role.lambda.arn
+  handler          = "handler.lambda_handler"
+  runtime          = "python3.12"
+  architectures    = ["x86_64"]
+  filename         = "${path.module}/../../artifacts/aws/lambda.zip"
+  source_code_hash = filebase64sha256("${path.module}/../../artifacts/aws/lambda.zip")
+  memory_size      = 128
+  timeout          = 3
+  depends_on       = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.lambda_logs]
 }
 
 resource "aws_apigatewayv2_api" "energy" {
