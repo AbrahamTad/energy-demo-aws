@@ -1,66 +1,92 @@
+import { Component } from "react";
+import type { ReactNode } from "react";
+import { HashRouter, Link, Route, Routes } from "react-router-dom";
+import { AuthProvider, RequireAuth } from "./auth/AuthProvider";
+import { EnergyProvider } from "./components/Energy";
+import { Layout } from "./components/Layout";
+import { ThemeProvider } from "./components/Theme";
+import { EnergyPage, HomePage, UserDashboardPage } from "./pages/EnergyPages";
+import {
+  LoginPage,
+  RegisterPage,
+  ResetPasswordPage,
+  VerifyPage,
+} from "./pages/AuthPages";
+import { ProfilePage, SettingsPage } from "./pages/AccountPages";
 
-import { useEffect, useState } from 'react'
-
-// FastAPI records have IDs; Lambda sample records do not.
-type EnergyRecord = {
-  id?: number
-  source: string
-  production: number
-  unit: string
+class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <main className="error-page">
+        <h1>Let’s try that again.</h1>
+        <p>
+          Something interrupted this page. Reload to return to your workspace.
+        </p>
+        <button
+          className="button primary"
+          onClick={() => window.location.reload()}
+        >
+          Reload page
+        </button>
+      </main>
+    ) : (
+      this.props.children
+    );
+  }
 }
 
-// Shared response structure for FastAPI and Lambda.
-type EnergyResponse = {
-  project: string
-  status: string
-  records: EnergyRecord[]
-}
-
-function App() {
-  const dataSource = import.meta.env.MODE === 'floci'
-    ? 'Lambda sample data (local Floci API Gateway)'
-    : import.meta.env.MODE === 'aws'
-      ? 'Lambda sample data (AWS)'
-      : 'PostgreSQL'
-  const [energy, setEnergy] = useState<EnergyResponse | null>(null)
-  const [error, setError] = useState('')
-
-  // Vite forwards this request to the API selected by the development mode.
-  useEffect(() => {
-    fetch('/api/energy')
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Failed to fetch energy data')
-        }
-        return response.json()
-      })
-      .then((data: EnergyResponse) => setEnergy(data))
-      .catch(() => setError('Cannot connect to the API'))
-  }, [])
-
-  if (error) return <p>{error}</p>
-  if (!energy) return <p>Loading energy data...</p>
-
+export function AppRoutes() {
   return (
-    <main>
-      <h1>⚡ Energy Dashboard</h1>
-      <h2>{energy.project}</h2>
-
-      <div className="energy-grid">
-        {energy.records.map((record) => (
-          <div className="energy-card" key={record.id ?? record.source}>
-            <h3>{record.source}</h3>
-            <p className="production">
-              {record.production} {record.unit}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <p>API Status: {energy.status}</p>
-      <p>Data source: {dataSource}</p>
-    </main>
-  )
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<HomePage />} />
+        <Route path="energy" element={<EnergyPage />} />
+        <Route path="login" element={<LoginPage />} />
+        <Route path="register" element={<RegisterPage />} />
+        <Route path="verify" element={<VerifyPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="dashboard" element={<UserDashboardPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route
+          path="*"
+          element={
+            <section className="error-page">
+              <p className="eyebrow">A SMALL DETOUR</p>
+              <h1>Page not found.</h1>
+              <p>Let’s get you back to somewhere brighter.</p>
+              <Link to="/" className="button primary">
+                Back to home
+              </Link>
+            </section>
+          }
+        />
+      </Route>
+    </Routes>
+  );
 }
 
-export default App
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <HashRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <EnergyProvider>
+              <AppRoutes />
+            </EnergyProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </HashRouter>
+    </AppErrorBoundary>
+  );
+}

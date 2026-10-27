@@ -1,5 +1,73 @@
 # EnergyDemo frontend
 
+React + TypeScript workspace with Home, Energy Dashboard, Login, Register,
+User Dashboard, Profile and Settings, plus email verification and password
+recovery. Charts show only the current `/api/energy` response; no historical or
+personal readings are fabricated. Source filtering and CSV export work locally.
+UI primitives, icons and charts use CSS/SVG; the only new runtime dependencies
+are React Router and AWS Amplify Auth (modular imports).
+
+## Routes and sessions
+
+Hash routes (`/#/energy`, `/#/profile`) support direct navigation/reloads on the
+existing private S3 + CloudFront site. No global 403/404-to-index rewrite is added,
+so API errors remain API errors. `/dashboard`, `/profile` and `/settings` require
+a Cognito session; the public energy endpoint is intentionally unchanged.
+
+Authentication uses SRP via Amplify, email verification, password recovery,
+optional TOTP enrollment/challenges, profile attribute updates, and global
+sign-out. Access/ID/refresh tokens stay in Amplify's shared memory storage.
+Reloading or closing the tab requires a new sign-in. Only the appearance setting
+is persisted in localStorage. No password, profile or JWT is stored there.
+
+AWS-mode builds use the deployed public ID pair in `src/auth/config.ts`:
+`eu-north-1_6m60ePWS0` / `796jkcsk4dc5scoc77r8ejies7`. Vite injects both values
+at build time, including when GitHub repository variables are unset. Optional
+`COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` repository variables must be set
+together and match this pair; partial, malformed or conflicting values fail the
+AWS build. The reusable Build AWS workflow supplies these public overrides;
+the manual deploy workflow consumes its same-commit artifact without rebuilding.
+No build or deployment job reads the separate Cognito Terraform state.
+
+For local development, copy `.env.example` to `.env.local` and explicitly fill
+both public IDs. Unconfigured local development keeps account actions unavailable.
+There is no alternate authentication path. Never put credentials or a client
+secret in any `VITE_` variable. An intentional production pool migration must
+update the public pair, its regression assertion, and repository variables together.
+
+After source review/merge, ensure Build AWS passes, then start a **new** manual
+deployment from `main` using the existing plan and approval safeguards. If the
+repository variables contain old values, remove both or set them to the pair
+above before building. Do not apply the Cognito root again to release frontend
+changes. After release, check `/#/register` → `/#/verify` → `/#/login` with an email
+you control, then check `/#/dashboard`, logout, and anonymous protected redirects.
+Only the public energy snapshot stays available without an authenticated session.
+
+See [the Cognito deployment guide](../infrastructure/terraform-aws-auth/README.md)
+for costs, resources, state isolation, exact approval-only deployment commands,
+real-account acceptance checks, and the future database authorization boundary.
+
+## Checks
+
+Use Node 24.21.0 as pinned by CI, then from this directory:
+
+```bash
+npm ci
+npm run lint
+npm test
+npm run build -- --mode aws
+```
+
+Vitest + Testing Library exercise the API parser, retry/filter UI, protected
+routes, SRP requests, registration/verification/reset, TOTP challenges, profile
+updates and token storage selection. SDK doubles exist **only in tests**, which
+do not call AWS or send email. Live Cognito acceptance requires approval and an
+actual pool. The AWS build adds a restrictive content security policy, allowing
+same-origin assets/API and the regional Cognito endpoint, without inline scripts
+or eval. Vite's development mode omits that production-only policy for HMR.
+
+## Local energy services
+
 The dashboard supports two local development modes. Run these commands from
 `frontend/` in WSL Ubuntu.
 
@@ -71,3 +139,57 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Exact first-release commit scope
+
+The frontend and separate identity source files from the earlier stages are still
+uncommitted. After review, include the complete release below; committing only
+the latest configuration fixes would omit required application files. Run this
+from the repository root when you choose to stage the release (not executed here).
+
+```bash
+git add -- \
+  .github/workflows/build-aws.yml \
+  frontend/.env.example \
+  frontend/README.md \
+  frontend/index.html \
+  frontend/package-lock.json \
+  frontend/package.json \
+  frontend/public/favicon.svg \
+  frontend/src/App.css \
+  frontend/src/App.test.tsx \
+  frontend/src/App.tsx \
+  frontend/src/auth/AuthProvider.tsx \
+  frontend/src/auth/client.test.ts \
+  frontend/src/auth/client.ts \
+  frontend/src/auth/config.test.ts \
+  frontend/src/auth/config.ts \
+  frontend/src/auth/context.ts \
+  frontend/src/components/Energy.tsx \
+  frontend/src/components/Forms.tsx \
+  frontend/src/components/Icon.tsx \
+  frontend/src/components/Layout.tsx \
+  frontend/src/components/Theme.tsx \
+  frontend/src/index.css \
+  frontend/src/lib/energy-context.ts \
+  frontend/src/lib/energy.test.ts \
+  frontend/src/lib/energy.ts \
+  frontend/src/lib/sources.ts \
+  frontend/src/lib/theme.ts \
+  frontend/src/lib/useAction.ts \
+  frontend/src/pages/AccountPages.tsx \
+  frontend/src/pages/AuthPages.tsx \
+  frontend/src/pages/EnergyPages.tsx \
+  frontend/src/test/setup.ts \
+  frontend/vite.config.ts \
+  frontend/vitest.config.ts \
+  infrastructure/terraform-aws-auth/.terraform.lock.hcl \
+  infrastructure/terraform-aws-auth/README.md \
+  infrastructure/terraform-aws-auth/main.tf \
+  infrastructure/terraform-aws-auth/tests/offline.tftest.hcl
+```
+
+Do not stage generated `.terraform/` directories, state, saved plans, artifacts,
+`.env.local`, or unrelated local infrastructure/database files. The four named
+identity source files preserve the separate root; they do not add an auth apply
+step or expand deployment IAM permissions.

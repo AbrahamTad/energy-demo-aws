@@ -35,8 +35,15 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      - run: npm test
+        working-directory: frontend
       - run: npm run build -- --mode aws
         working-directory: frontend
+        env:
+          # Optional public overrides. AWS builds default to the deployed ID pair
+          # in frontend/src/auth/config.ts; partial/conflicting values fail.
+          VITE_COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
       - name: Package this commit
         run: python scripts/aws/build_artifact.py
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
@@ -45,8 +52,8 @@ jobs:
           terraform_wrapper: false
       - name: Validate AWS configurations without credentials or backend access
         run: |
-          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap
-          for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap; do
+          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth
+          for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth; do
             terraform -chdir="$directory" init -backend=false -input=false -lockfile=readonly
             terraform -chdir="$directory" validate
             terraform -chdir="$directory" test -no-color
