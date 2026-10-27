@@ -18,7 +18,7 @@ env:
   TF_IN_AUTOMATION: 'true'
   TF_WORKSPACE: default
   TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
-  TF_VAR_budget_email: ${{ vars.AWS_BUDGET_EMAIL }}
+  TF_VAR_budget_email: ${{ secrets.AWS_BUDGET_EMAIL }}
   AWS_API_ID: ${{ vars.AWS_API_ID }}
   AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
   AWS_CLOUDFRONT_OAC_ID: ${{ vars.AWS_CLOUDFRONT_OAC_ID }}
