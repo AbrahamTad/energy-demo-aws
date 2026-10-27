@@ -38,7 +38,7 @@ run "guarded_serverless_stack" {
     condition = alltrue([
       for behavior in aws_cloudfront_distribution.frontend.ordered_cache_behavior :
       behavior.path_pattern == "/api/*" && behavior.target_origin_id == "energy-api" &&
-      behavior.cache_policy_id == "413f1604-6f42-4eac-8912-3115b5a43239" &&
+      behavior.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" &&
       behavior.origin_request_policy_id == "b689b0a8-53d0-40ab-baf2-68738e2966ac"
     ])
     error_message = "API caching must stay disabled and viewer Host must not reach API Gateway."
