@@ -1,5 +1,6 @@
 # Mock provider: these plans never authenticate to AWS or access the backend.
 mock_provider "aws" {
+  override_during = plan
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/energy-demo-aws/lambda-execution" }
   }
@@ -18,8 +19,14 @@ mock_provider "aws" {
   mock_resource "aws_cloudfront_distribution" {
     defaults = { arn = "arn:aws:cloudfront::123456789012:distribution/TESTFIXTURE" }
   }
+  mock_resource "aws_cloudfront_origin_access_control" {
+    defaults = { id = "FIXTUREOAC" }
+  }
   mock_resource "aws_apigatewayv2_api" {
-    defaults = { api_endpoint = "https://fixture.execute-api.eu-north-1.amazonaws.com" }
+    defaults = {
+      api_endpoint  = "https://fixture.execute-api.eu-north-1.amazonaws.com"
+      execution_arn = "arn:aws:execute-api:eu-north-1:123456789012:fixture"
+    }
   }
 }
 
@@ -42,6 +49,19 @@ run "guarded_serverless_stack" {
       behavior.origin_request_policy_id == "b689b0a8-53d0-40ab-baf2-68738e2966ac"
     ])
     error_message = "API caching must stay disabled and viewer Host must not reach API Gateway."
+  }
+  assert {
+    condition = length(aws_cloudfront_distribution.frontend.origin) == 2 && alltrue([
+      for origin in aws_cloudfront_distribution.frontend.origin :
+      length(origin.s3_origin_config) == 0 && (
+        origin.origin_id == "frontend-s3" ? length(origin.custom_origin_config) == 0 && origin.origin_access_control_id == aws_cloudfront_origin_access_control.frontend.id :
+        origin.origin_id == "energy-api" && alltrue([
+          for config in origin.custom_origin_config :
+          config.origin_protocol_policy == "https-only" && config.origin_ssl_protocols == toset(["TLSv1.2"])
+        ]) && length(origin.custom_origin_config) == 1
+      )
+    ]) && aws_cloudfront_origin_access_control.frontend.signing_behavior == "always" && aws_cloudfront_origin_access_control.frontend.signing_protocol == "sigv4"
+    error_message = "Keep OAC without an empty legacy OAI block, and preserve the HTTPS/TLS API origin."
   }
   assert {
     condition     = aws_s3_bucket_public_access_block.frontend.block_public_policy && aws_s3_bucket_public_access_block.frontend.restrict_public_buckets

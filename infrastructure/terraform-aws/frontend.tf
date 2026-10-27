@@ -44,7 +44,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id                = "frontend-s3"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
-    s3_origin_config { origin_access_identity = "" }
+    # OAC signs S3 requests; the provider omits empty legacy OAI blocks on read.
   }
   origin {
     domain_name = trimprefix(aws_apigatewayv2_api.energy.api_endpoint, "https://")

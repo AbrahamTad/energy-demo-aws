@@ -67,10 +67,12 @@ locals {
   frontend_arn  = "arn:aws:s3:::energy-demo-aws-${var.account_id}-eu-north-1"
   execution_arn = "arn:aws:iam::${var.account_id}:role/energy-demo-aws/lambda-execution"
   lambda_arn    = "arn:aws:lambda:eu-north-1:${var.account_id}:function:energy-demo-aws-energy"
-  log_arns = [
-    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/aws/lambda/energy-demo-aws-energy:*",
-    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/energy-demo-aws/http-api:*"
+  # Resource tagging APIs require the exact ARN, without the :* suffix.
+  log_group_arns = [
+    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/aws/lambda/energy-demo-aws-energy",
+    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/energy-demo-aws/http-api"
   ]
+  log_arns = [for arn in local.log_group_arns : "${arn}:*"]
   oidc_arn = var.existing_oidc_provider_arn != "" ? var.existing_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
   subjects = {
     plan   = "${var.github_subject_prefix}ref:refs/heads/main"
@@ -171,7 +173,8 @@ locals {
     { Effect = "Allow", Action = ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:GetFunctionCodeSigningConfig", "lambda:GetPolicy", "lambda:ListVersionsByFunction", "lambda:ListTags"], Resource = [local.lambda_arn] },
     { Effect = "Allow", Action = ["iam:GetRole", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole"], Resource = [local.execution_arn] },
     { Effect = "Allow", Action = ["logs:DescribeLogGroups"], Resource = ["*"], Condition = { StringEquals = { "aws:RequestedRegion" = "eu-north-1" } } },
-    { Effect = "Allow", Action = ["logs:ListTagsForResource", "logs:ListTagsLogGroup"], Resource = local.log_arns },
+    { Effect = "Allow", Action = ["logs:ListTagsForResource"], Resource = local.log_group_arns },
+    { Effect = "Allow", Action = ["logs:ListTagsLogGroup"], Resource = local.log_arns },
     { Effect = "Allow", Action = ["apigateway:GET"], Resource = concat(local.api_root_arns, local.api_child_arns, local.api_tag_arns) },
     { Effect = "Allow", Action = ["cloudfront:GetDistribution", "cloudfront:GetDistributionConfig", "cloudfront:ListTagsForResource"], Resource = local.distribution_arns },
     { Effect = "Allow", Action = ["cloudfront:GetOriginAccessControl", "cloudfront:GetOriginAccessControlConfig"], Resource = local.oac_arns },
@@ -185,7 +188,8 @@ locals {
     { Effect = "Allow", Action = ["iam:CreateRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.lambda_boundary.arn } } },
     { Effect = "Allow", Action = ["iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:TagRole", "iam:UntagRole"], Resource = [local.execution_arn] },
     { Effect = "Allow", Action = ["iam:PassRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } } },
-    { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource", "logs:TagLogGroup", "logs:UntagLogGroup"], Resource = local.log_arns },
+    { Effect = "Allow", Action = ["logs:TagResource", "logs:UntagResource"], Resource = local.log_group_arns },
+    { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagLogGroup", "logs:UntagLogGroup"], Resource = local.log_arns },
     { Effect = "Allow", Action = ["apigateway:PATCH"], Resource = local.api_root_arns },
     { Effect = "Allow", Action = ["apigateway:POST", "apigateway:PATCH", "apigateway:PUT", "apigateway:DELETE"], Resource = local.api_child_arns },
     { Effect = "Allow", Action = ["cloudfront:UpdateDistribution", "cloudfront:CreateInvalidation"], Resource = local.distribution_arns },

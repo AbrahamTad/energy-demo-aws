@@ -119,6 +119,55 @@ run "mutations_require_exact_ids" {
   }
 }
 
+run "log_group_permissions_use_correct_arns" {
+  command = plan
+  assert {
+    condition = alltrue(flatten([
+      for role in ["plan", "deploy"] : [
+        for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement : [
+          for action in s.Action : s.Resource == (
+            contains(["logs:ListTagsForResource", "logs:TagResource", "logs:UntagResource"], action) ? [
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-energy",
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api"
+              ] : [
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-energy:*",
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api:*"
+            ]
+          ) if startswith(action, "logs:") && action != "logs:DescribeLogGroups"
+        ]
+      ]
+    ]))
+    error_message = "Log permissions must cover only the two EnergyDemo groups with the ARN form required by each action."
+  }
+  assert {
+    condition = alltrue([
+      for role, actions in {
+        plan = ["logs:DescribeLogGroups", "logs:ListTagsForResource", "logs:ListTagsLogGroup"]
+        deploy = [
+          "logs:DescribeLogGroups", "logs:ListTagsForResource", "logs:ListTagsLogGroup",
+          "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
+          "logs:TagResource", "logs:UntagResource", "logs:TagLogGroup", "logs:UntagLogGroup"
+        ]
+        } : sort(flatten([
+          for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement : [
+            for action in s.Action : action if startswith(action, "logs:")
+          ]
+      ])) == sort(actions)
+    ])
+    error_message = "Both roles need tag reads; log mutations must remain exclusive to deploy with no extra actions."
+  }
+  assert {
+    condition = alltrue(flatten([
+      for role in ["plan", "deploy"] : [
+        for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement :
+        s.Resource == ["*"] && s.Condition.StringEquals["aws:RequestedRegion"] == "eu-north-1"
+        if contains(s.Action, "logs:DescribeLogGroups")
+      ]
+    ]))
+    error_message = "Log discovery must remain restricted to eu-north-1."
+  }
+}
+
 run "reject_wildcard_resource_ids" {
   command = plan
   variables {
