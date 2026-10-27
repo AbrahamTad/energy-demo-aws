@@ -48,7 +48,7 @@ run "guarded_serverless_stack" {
     error_message = "The frontend bucket must remain private."
   }
   assert {
-    condition = aws_lambda_function.energy.timeout == 3 && aws_cloudwatch_log_group.lambda.retention_in_days == 7
+    condition     = aws_lambda_function.energy.timeout == 3 && aws_cloudwatch_log_group.lambda.retention_in_days == 7
     error_message = "Learning cost safeguards changed."
   }
   assert {
