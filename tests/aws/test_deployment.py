@@ -39,105 +39,208 @@ class SampleLambdaTests(unittest.TestCase):
         ])
 
 
+
 class GateTests(unittest.TestCase):
     def setUp(self):
         self.environment = {
             "id": 42,
-            "protection_rules": [{"type": "required_reviewers", "prevent_self_review": True,
-                                  "reviewers": [{"type": "User", "reviewer": {"login": "reviewer"}}]}],
-            "deployment_branch_policy": {"custom_branch_policies": True},
+            "protection_rules": [],
+            "deployment_branch_policy": {
+                "custom_branch_policies": True
+            },
         }
-        self.policies = {"branch_policies": [{"name": "main", "type": "branch"}]}
+        self.policies = {
+            "branch_policies": [
+                {"name": "main", "type": "branch"}
+            ]
+        }
 
-    def test_required_review_and_main_only_are_accepted(self):
+    def test_solo_manual_deployment_and_main_only_are_accepted(self):
         gate.validate_environment(self.environment, self.policies)
 
-    def test_no_review_feature_fails_closed(self):
-        self.environment["protection_rules"] = []
+    def test_required_reviewers_are_rejected_in_solo_mode(self):
+        self.environment["protection_rules"] = [
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": True,
+                "reviewers": [
+                    {"type": "User", "reviewer": {"login": "reviewer"}}
+                ],
+            }
+        ]
         with self.assertRaises(ValueError):
             gate.validate_environment(self.environment, self.policies)
 
-    def test_self_review_enabled_is_rejected(self):
-        self.environment["protection_rules"][0]["prevent_self_review"] = False
+    def test_missing_main_branch_restriction_is_rejected(self):
+        self.environment["deployment_branch_policy"] = {
+            "custom_branch_policies": False
+        }
         with self.assertRaises(ValueError):
             gate.validate_environment(self.environment, self.policies)
 
     def test_wildcard_or_tag_branch_policy_is_rejected(self):
         for policy in [{"name": "*"}, {"name": "main", "type": "tag"}]:
             with self.subTest(policy=policy), self.assertRaises(ValueError):
-                gate.validate_environment(self.environment, {"branch_policies": [policy]})
+                gate.validate_environment(
+                    self.environment, {"branch_policies": [policy]}
+                )
 
     def test_admin_bypass_without_recorded_approval_is_rejected(self):
         with self.assertRaises(ValueError):
-            gate.validate_approval([], 42, "author", run_attempt=1, reviewer_logins={"reviewer"})
+            gate.validate_approval(
+                [], 42, "author",
+                run_attempt=1,
+                reviewer_logins={"reviewer"}
+            )
 
     def test_wrong_environment_or_self_approval_is_rejected(self):
         for reviewer, environment in [("author", 42), ("reviewer", 99)]:
             with self.subTest(reviewer=reviewer), self.assertRaises(ValueError):
-                gate.validate_approval([{"state": "approved", "user": {"login": reviewer},
-                                         "environments": [{"id": environment}]}], 42, "author", run_attempt=1, reviewer_logins={"reviewer"})
+                gate.validate_approval(
+                    [{
+                        "state": "approved",
+                        "user": {"login": reviewer},
+                        "environments": [{"id": environment}]
+                    }],
+                    42, "author",
+                    run_attempt=1,
+                    reviewer_logins={"reviewer"}
+                )
 
     def test_independent_approval_is_accepted(self):
-        gate.validate_approval([{"state": "approved", "user": {"login": "reviewer"},
-                                 "environments": [{"id": 42}]}], 42, "author", run_attempt=1, reviewer_logins={"reviewer"})
+        gate.validate_approval(
+            [{
+                "state": "approved",
+                "user": {"login": "reviewer"},
+                "environments": [{"id": 42}]
+            }],
+            42, "author",
+            run_attempt=1,
+            reviewer_logins={"reviewer"}
+        )
 
     def test_rerun_initiator_cannot_approve(self):
         with self.assertRaises(ValueError):
-            gate.validate_approval([{"state": "approved", "user": {"login": "rerunner"},
-                                     "environments": [{"id": 42}]}], 42, "author", "rerunner", run_attempt=1, reviewer_logins={"rerunner"})
+            gate.validate_approval(
+                [{
+                    "state": "approved",
+                    "user": {"login": "rerunner"},
+                    "environments": [{"id": 42}]
+                }],
+                42, "author", "rerunner",
+                run_attempt=1,
+                reviewer_logins={"rerunner"}
+            )
 
     def test_missing_reviewer_identity_is_rejected(self):
         with self.assertRaises(ValueError):
-            gate.validate_approval([{"state": "approved", "environments": [{"id": 42}]}], 42, "author", run_attempt=1, reviewer_logins={"reviewer"})
+            gate.validate_approval(
+                [{
+                    "state": "approved",
+                    "environments": [{"id": 42}]
+                }],
+                42, "author",
+                run_attempt=1,
+                reviewer_logins={"reviewer"}
+            )
 
     def test_unlisted_admin_approval_does_not_bypass_required_reviewer(self):
         with self.assertRaises(ValueError):
-            gate.validate_approval([{"state": "approved", "user": {"login": "unlisted-admin"},
-                                     "environments": [{"id": 42}]}], 42, "author",
-                                   run_attempt=1, reviewer_logins={"reviewer"})
+            gate.validate_approval(
+                [{
+                    "state": "approved",
+                    "user": {"login": "unlisted-admin"},
+                    "environments": [{"id": 42}]
+                }],
+                42, "author",
+                run_attempt=1,
+                reviewer_logins={"reviewer"}
+            )
 
     def test_team_only_reviewers_fail_closed(self):
-        self.environment["protection_rules"][0]["reviewers"] = [
-            {"type": "Team", "reviewer": {"slug": "reviewers"}}
+        self.environment["protection_rules"] = [
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": True,
+                "reviewers": [
+                    {"type": "Team", "reviewer": {"slug": "reviewers"}}
+                ]
+            }
         ]
         with self.assertRaises(ValueError):
             gate.validate_environment(self.environment, self.policies)
 
     def test_previous_approval_cannot_authorize_rerun(self):
-        review = {"state": "approved", "user": {"login": "reviewer"}, "environments": [{"id": 42}]}
+        review = {
+            "state": "approved",
+            "user": {"login": "reviewer"},
+            "environments": [{"id": 42}]
+        }
         for attempt in [None, "", "2", "3", "01", "invalid"]:
             with self.subTest(attempt=attempt), self.assertRaises(ValueError):
-                gate.validate_approval([review], 42, "author", run_attempt=attempt, reviewer_logins={"reviewer"})
+                gate.validate_approval(
+                    [review], 42, "author",
+                    run_attempt=attempt,
+                    reviewer_logins={"reviewer"}
+                )
 
     def test_rerun_is_rejected_before_any_api_access(self):
-        with patch.dict(os.environ, {"GITHUB_RUN_ATTEMPT": "2"}, clear=True), \
-                patch("sys.argv", ["check_environment.py"]), patch.object(gate, "get") as api:
+        with patch.dict(
+            os.environ, {"GITHUB_RUN_ATTEMPT": "2"}, clear=True
+        ), patch(
+            "sys.argv", ["check_environment.py"]
+        ), patch.object(gate, "get") as api:
             with self.assertRaises(ValueError):
                 gate.main()
             api.assert_not_called()
 
     def test_rejected_or_ambiguous_review_history_fails_closed(self):
-        approved = {"state": "approved", "user": {"login": "reviewer"}, "environments": [{"id": 42}]}
+        approved = {
+            "state": "approved",
+            "user": {"login": "reviewer"},
+            "environments": [{"id": 42}]
+        }
         rejected = {**approved, "state": "rejected"}
-        for reviews in [[rejected], [approved, rejected], [rejected, approved], [approved, approved]]:
+
+        for reviews in [
+            [rejected],
+            [approved, rejected],
+            [rejected, approved],
+            [approved, approved]
+        ]:
             with self.subTest(reviews=reviews), self.assertRaises(ValueError):
-                gate.validate_approval(reviews, 42, "author", run_attempt=1, reviewer_logins={"reviewer"})
+                gate.validate_approval(
+                    reviews, 42, "author",
+                    run_attempt=1,
+                    reviewer_logins={"reviewer"}
+                )
 
     def test_run_metadata_must_match_dispatch_commit_and_repository(self):
         run = {
-            "id": 123, "run_attempt": 1, "head_sha": "a" * 40,
-            "event": "workflow_dispatch", "head_branch": "main",
+            "id": 123,
+            "run_attempt": 1,
+            "head_sha": "a" * 40,
+            "event": "workflow_dispatch",
+            "head_branch": "main",
             "repository": {"full_name": gate.REPOSITORY},
             "head_repository": {"full_name": gate.REPOSITORY},
             "path": ".github/workflows/deploy-aws.yml",
         }
+
         gate.validate_run(run, "123", "a" * 40)
-        for key, value in [("run_attempt", 2), ("head_sha", "b" * 40),
-                           ("event", "push"), ("head_branch", "other"),
-                           ("path", ".github/workflows/other.yml"),
-                           ("head_repository", {"full_name": "other/repo"})]:
+
+        for key, value in [
+            ("run_attempt", 2),
+            ("head_sha", "b" * 40),
+            ("event", "push"),
+            ("head_branch", "other"),
+            ("path", ".github/workflows/other.yml"),
+            ("head_repository", {"full_name": "other/repo"})
+        ]:
             with self.subTest(key=key), self.assertRaises(ValueError):
-                gate.validate_run({**run, key: value}, "123", "a" * 40)
+                gate.validate_run(
+                    {**run, key: value}, "123", "a" * 40
+                )
 
 
 class PlanGuardTests(unittest.TestCase):

@@ -31,16 +31,27 @@ def required_reviewers(environment):
 
 
 def validate_environment(environment, policies):
-    if not required_reviewers(environment):
-        raise ValueError("A direct required User reviewer with self-review prevention is required; team-only rules are not supported")
+    if any(
+        rule.get("type") == "required_reviewers"
+        for rule in environment.get("protection_rules", [])
+    ):
+        raise ValueError(
+            "Solo deployment requires no configured required reviewers"
+        )
+
     branch = environment.get("deployment_branch_policy") or {}
     if branch.get("custom_branch_policies") is not True:
         raise ValueError("Environment must use selected deployment branches")
+
     entries = policies.get("branch_policies", [])
-    if len(entries) != 1 or entries[0].get("name") != "main" or entries[0].get("type", "branch") != "branch":
-        raise ValueError("Environment must allow only the main branch, with no tags/wildcards")
-
-
+    if (
+        len(entries) != 1
+        or entries[0].get("name") != "main"
+        or entries[0].get("type", "branch") != "branch"
+    ):
+        raise ValueError(
+            "Environment must allow only the main branch, with no tags/wildcards"
+        )
 def validate_attempt(attempt):
     # Review history has no reliable per-attempt binding. Reusing a run is unsafe:
     # force a new manual dispatch/run ID and a new environment approval instead.
