@@ -73,7 +73,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
     # AWS managed CachingDisabled and AllViewerExceptHostHeader.
-    cache_policy_id          = "413f1604-6f42-4eac-8912-3115b5a43239"
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
   }
   restrictions {
