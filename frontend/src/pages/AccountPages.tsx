@@ -106,8 +106,8 @@ export function ProfilePage() {
             </div>
           </dl>
           <p className="muted" style={{ marginTop: 20 }}>
-            Personal energy readings will be available when a data source is
-            connected to your account.
+            Add and manage private energy readings in My dashboard. Your energy
+            records are stored separately from the public energy snapshot.
           </p>
         </section>
       </div>

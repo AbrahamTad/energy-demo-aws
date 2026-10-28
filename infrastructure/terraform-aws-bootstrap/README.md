@@ -1,10 +1,12 @@
-# Administrator bootstrap: proposed only
+# Administrator bootstrap
 
 This is a separate Terraform root, not a module of the application and never
 called by GitHub CI/deployment. It creates real resources only after explicit
 approval and an authenticated MFA/SSO administrator session. No static AWS keys.
+The Step 2 IAM changes are deployed and verified; Step 2.4 must not reapply this
+root. See the current release status in the DynamoDB guide below.
 
-## Proposed resources
+## Resources
 
 - Dedicated state bucket `energy-demo-tfstate-<ACCOUNT_ID>-eu-north-1`: private,
   encrypted with SSE-S3, versioned, TLS-only, prevent_destroy, force_destroy=false.
@@ -12,7 +14,10 @@ approval and an authenticated MFA/SSO administrator session. No static AWS keys.
   `existing_oidc_provider_arn`. Inspect before creating; never replace another
   application's account-wide provider.
 - Separate `/energy-demo-bootstrap/github-plan` and `github-deploy` IAM roles.
-- A `/energy-demo-bootstrap/lambda-logs-boundary` managed permissions boundary.
+- The existing `/energy-demo-bootstrap/lambda-logs-boundary` boundary, expanded
+  only to allow Query on the public table's `PUBLIC` partition.
+- A separate `/energy-demo-bootstrap/user-energy-boundary` for the private
+  Lambda's exact-table CRUD and its own logs.
 
 Inputs: `account_id`, `github_subject_prefix`, optional `existing_oidc_provider_arn`,
 and optional `deployment_resource_ids` (default null).
@@ -33,12 +38,22 @@ object. It can create/delete only the `.tflock` object for locking, not write
 application state or change infrastructure. Neither role can delete the state.
 
 Deploy adds named frontend-bucket/object writes, exact Lambda/log/budget scopes,
-and management of one execution role under `/energy-demo-aws/`. `iam:PassRole`
-allows that role only, passed only to Lambda. Role creation requires the fixed
-logging-only permissions boundary; the deployment role cannot remove/change the
-boundary, attach managed policies, edit its own IAM role, modify the OIDC provider,
-or change the bootstrap state bucket configuration. The Lambda role cannot access
-databases, secrets, S3, or IAM; it writes only its own log streams.
+and management of two named execution roles under `/energy-demo-aws/`.
+`iam:PassRole` allows only those roles, passed only to Lambda. Each role can only
+be created with its own fixed permissions boundary. The deployment role cannot
+remove/change boundaries, attach managed policies, edit its own IAM role, modify
+the OIDC provider, or change the bootstrap state bucket configuration. The public
+Lambda can Query only the public table's `PUBLIC` partition. The private Lambda
+has only Query/GetItem/PutItem/UpdateItem/DeleteItem on the private table. Each
+role writes only its own log streams; neither has secrets, S3 or IAM access.
+
+For Step 2, CI can describe/manage the two exact EnergyDemo DynamoDB tables, but
+has no item operations, Scan or DeleteTable. There are no wildcard table grants.
+The provider's encryption refresh can only DescribeKey when requesting the
+regional `alias/aws/dynamodb`; it cannot use or manage KMS keys.
+Review/apply the administrator-managed IAM changes before releasing the new
+application. See the [DynamoDB migration guide](../terraform-aws/STEP2-DYNAMODB.md)
+for the table-first public seed and separate identity-state protections.
 
 There are no API/CloudFront creation or account-wide mutation permissions in the
 GitHub roles. With `deployment_resource_ids = null`, they have NO API/CloudFront
@@ -70,8 +85,10 @@ no API-root DELETE, distribution/OAC DELETE, creation, or tagging grants. Tag ch
 replacement, recovery after deletion, and initial creation require administrator
 review. Plan validation also refuses deletions/replacements and wrong/missing IDs.
 
-IAM policies have not been tested against a real account; missing service-specific
-permissions must be reviewed, not fixed by restoring broad collection permissions.
+The Step 2 boundaries and GitHub policies were read back from the real account
+and matched bootstrap state. Execution through Actions still needs the normal
+release checks; missing service-specific permissions must be reviewed, not fixed
+by restoring broad collection permissions.
 
 IAM and CloudFront are global; API/Lambda/log scopes are Stockholm. Avoid a blanket
 region-deny policy that would accidentally block global-service operations.

@@ -30,6 +30,17 @@ mock_provider "aws" {
   }
 }
 
+override_resource {
+  target          = aws_dynamodb_table.public_energy
+  override_during = plan
+  values          = { arn = "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-public-energy" }
+}
+override_resource {
+  target          = aws_dynamodb_table.user_energy
+  override_during = plan
+  values          = { arn = "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-user-energy" }
+}
+
 variables {
   account_id   = "123456789012" # Offline fixture; never authenticated.
   budget_email = "test@example.invalid"
@@ -81,4 +92,52 @@ run "reject_floci_account" {
   command = plan
   variables { account_id = "000000000000" }
   expect_failures = [var.account_id]
+}
+
+run "database_and_private_routes" {
+  command = plan
+  assert {
+    condition = (
+      alltrue([for table in [aws_dynamodb_table.public_energy, aws_dynamodb_table.user_energy] :
+        table.billing_mode == "PAY_PER_REQUEST" && table.deletion_protection_enabled &&
+        table.server_side_encryption[0].enabled && table.point_in_time_recovery[0].enabled &&
+        table.on_demand_throughput[0].max_read_request_units == 10 && table.on_demand_throughput[0].max_write_request_units == 5
+      ]) && aws_dynamodb_table.user_energy.hash_key == "user_sub" && aws_dynamodb_table.public_energy.hash_key == "dataset"
+    )
+    error_message = "Keep separate protected, encrypted, backed-up pay-per-request tables with throughput caps and sub ownership."
+  }
+  assert {
+    condition = (
+      aws_apigatewayv2_route.energy.authorization_type == "NONE" && length(aws_apigatewayv2_route.user_energy) == 5 && alltrue([
+        for route in values(aws_apigatewayv2_route.user_energy) : route.authorization_type == "JWT" && route.authorization_scopes == toset(["aws.cognito.signin.user.admin"])
+      ]) && aws_apigatewayv2_authorizer.users.jwt_configuration[0].audience == toset(["796jkcsk4dc5scoc77r8ejies7"]) &&
+      aws_apigatewayv2_authorizer.users.jwt_configuration[0].issuer == "https://cognito-idp.eu-north-1.amazonaws.com/eu-north-1_6m60ePWS0"
+    )
+    error_message = "The public API remains public; every private CRUD route requires an access token from the exact Cognito client and issuer."
+  }
+  assert {
+    condition = (
+      jsondecode(aws_iam_role_policy.public_energy.policy).Statement[0].Action == ["dynamodb:Query"] &&
+      jsondecode(aws_iam_role_policy.public_energy.policy).Statement[0].Resource == "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-public-energy" &&
+      jsondecode(aws_iam_role_policy.public_energy.policy).Statement[0].Condition["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] == ["PUBLIC"] &&
+      alltrue([for s in jsondecode(aws_iam_role_policy.user_energy.policy).Statement :
+        s.Resource == "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-user-energy" &&
+        toset(s.Action) == toset(["dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"])
+        if anytrue([for action in s.Action : startswith(action, "dynamodb:")])
+      ])
+    )
+    error_message = "Public and private Lambdas must never share data permissions; no Scan or cross-table data access."
+  }
+  assert {
+    condition = (
+      toset(keys(aws_lambda_function.energy.environment[0].variables)) == toset(["PUBLIC_ENERGY_TABLE"]) &&
+      !contains(keys(aws_lambda_function.user_energy.environment[0].variables), "PUBLIC_ENERGY_TABLE") &&
+      aws_iam_role.user_energy.permissions_boundary == "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/user-energy-boundary" &&
+      alltrue([for behavior in aws_cloudfront_distribution.frontend.ordered_cache_behavior :
+        contains(behavior.allowed_methods, "POST") && contains(behavior.allowed_methods, "PUT") && contains(behavior.allowed_methods, "DELETE") &&
+        behavior.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" && behavior.origin_request_policy_id == "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+      ])
+    )
+    error_message = "Keep isolated environments/boundaries and forward authenticated writes without enabling API caching."
+  }
 }

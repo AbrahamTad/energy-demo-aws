@@ -70,8 +70,9 @@ resource "aws_cloudfront_distribution" "frontend" {
     path_pattern           = "/api/*"
     target_origin_id       = "energy-api"
     viewer_protocol_policy = "https-only"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
+    # CloudFront requires all seven methods to forward private API writes.
+    allowed_methods = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods  = ["GET", "HEAD"]
     # AWS managed CachingDisabled and AllViewerExceptHostHeader.
     cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
     origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"

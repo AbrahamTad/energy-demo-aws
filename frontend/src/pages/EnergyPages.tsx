@@ -12,6 +12,7 @@ import { useEnergy } from "../lib/energy-context";
 import { sourceStyle } from "../lib/sources";
 import { Icon } from "../components/Icon";
 import { formatEnergy } from "../lib/energy";
+import { UserRecords } from "../components/UserRecords";
 
 function SnapshotHeader() {
   const { fetchedAt, loading, refresh, error } = useEnergy();
@@ -276,7 +277,6 @@ export function UserDashboardPage() {
             A clear view of your account and connected energy.
           </p>
         </div>
-        <SnapshotHeader />
       </div>
       <div className="account-summary">
         <section className="panel">
@@ -303,24 +303,7 @@ export function UserDashboardPage() {
           </Link>
         </section>
       </div>
-      <div className="section-heading">
-        <div>
-          <h2>Connected energy</h2>
-          <p className="muted">
-            The shared source snapshot. Personal readings will appear when a
-            data source is connected.
-          </p>
-        </div>
-        <Link to="/energy" className="text-link">
-          Open dashboard <Icon name="arrow" size={16} />
-        </Link>
-      </div>
-      <EnergyFeedback />
-      <EnergyCards />
-      <div className="dashboard-grid">
-        <ProductionPanel />
-        <EnergyMix />
-      </div>
+      {profile && <UserRecords key={profile.subject} />}
     </>
   );
 }

@@ -8,6 +8,12 @@ mock_provider "aws" {
   }
 }
 
+override_resource {
+  target          = aws_iam_policy.user_energy_boundary
+  override_during = plan
+  values          = { arn = "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/user-energy-boundary" }
+}
+
 variables {
   account_id                 = "123456789012" # Offline fixture; never authenticated.
   github_subject_prefix      = "repo:AbrahamTad/energy-demo-aws:"
@@ -56,22 +62,28 @@ run "mutations_require_exact_ids" {
     }
   }
   assert {
-    condition = alltrue([
-      for s in jsondecode(aws_iam_role_policy.github["deploy"].policy).Statement :
-      s.Resource == ["arn:aws:iam::123456789012:role/energy-demo-aws/lambda-execution"] &&
-      s.Condition.StringEquals["iam:PassedToService"] == "lambda.amazonaws.com"
-      if contains(s.Action, "iam:PassRole")
-    ])
-    error_message = "Only the bounded EnergyDemo execution role may be passed, only to Lambda."
+    condition     = length(aws_iam_role_policy.github["deploy"].policy) < 10240
+    error_message = "The full exact-ID deployment policy must stay within AWS's 10,240-byte inline policy limit."
   }
   assert {
     condition = alltrue([
       for s in jsondecode(aws_iam_role_policy.github["deploy"].policy).Statement :
-      s.Resource == ["arn:aws:iam::123456789012:role/energy-demo-aws/lambda-execution"] &&
-      s.Condition.StringEquals["iam:PermissionsBoundary"] == "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/lambda-logs-boundary"
+      toset(s.Resource) == toset(["arn:aws:iam::123456789012:role/energy-demo-aws/lambda-execution", "arn:aws:iam::123456789012:role/energy-demo-aws/user-energy-execution"]) &&
+      s.Condition.StringEquals["iam:PassedToService"] == "lambda.amazonaws.com"
+      if contains(s.Action, "iam:PassRole")
+    ])
+    error_message = "Only the two bounded EnergyDemo roles may be passed, only to Lambda."
+  }
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_role_policy.github["deploy"].policy).Statement :
+      length(s.Resource) == 1 && s.Condition.StringEquals["iam:PermissionsBoundary"] == lookup({
+        "arn:aws:iam::123456789012:role/energy-demo-aws/lambda-execution"      = "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/lambda-logs-boundary"
+        "arn:aws:iam::123456789012:role/energy-demo-aws/user-energy-execution" = "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/user-energy-boundary"
+      }, s.Resource[0], "INVALID")
       if contains(s.Action, "iam:CreateRole")
     ])
-    error_message = "Creation of the one execution role must require the fixed logging-only boundary."
+    error_message = "Each execution role must require its own exact administrator-managed boundary."
   }
   assert {
     condition = alltrue(flatten([
@@ -128,16 +140,18 @@ run "log_group_permissions_use_correct_arns" {
           for action in s.Action : s.Resource == (
             contains(["logs:ListTagsForResource", "logs:TagResource", "logs:UntagResource"], action) ? [
               "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-energy",
-              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api"
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api",
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-user-energy"
               ] : [
               "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-energy:*",
-              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api:*"
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/energy-demo-aws/http-api:*",
+              "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-user-energy:*"
             ]
           ) if startswith(action, "logs:") && action != "logs:DescribeLogGroups"
         ]
       ]
     ]))
-    error_message = "Log permissions must cover only the two EnergyDemo groups with the ARN form required by each action."
+    error_message = "Log permissions must cover only the three EnergyDemo groups with the ARN form required by each action."
   }
   assert {
     condition = alltrue([
@@ -182,4 +196,50 @@ run "reject_wildcard_oidc_subject" {
   command = plan
   variables { github_subject_prefix = "repo:AbrahamTad/*:" }
   expect_failures = [var.github_subject_prefix]
+}
+
+run "database_iam_stays_bounded" {
+  command = plan
+  assert {
+    condition = alltrue(flatten([
+      for role in ["plan", "deploy"] : [for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement :
+        s.Action == ["kms:DescribeKey"] && s.Resource == ["arn:aws:kms:eu-north-1:123456789012:key/*"] &&
+        s.Condition.StringEquals["kms:RequestAlias"] == "alias/aws/dynamodb"
+        if anytrue([for action in s.Action : startswith(action, "kms:")])
+      ]]
+    ))
+    error_message = "Encryption refresh may only describe the regional AWS-managed DynamoDB alias; no key usage or management grants."
+  }
+  assert {
+    condition = alltrue(flatten([
+      for role in ["plan", "deploy"] : [for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement : [
+        for action in s.Action : !contains(["dynamodb:Scan", "dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:DeleteTable"], action)
+      ]]
+    ]))
+    error_message = "CI may manage exact table infrastructure but must never access records or delete tables."
+  }
+  assert {
+    condition = alltrue(flatten([
+      for role in ["plan", "deploy"] : [for s in jsondecode(aws_iam_role_policy.github[role].policy).Statement :
+        toset(s.Resource) == toset([
+          "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-public-energy",
+          "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-user-energy"
+        ]) if anytrue([for action in s.Action : startswith(action, "dynamodb:")])
+      ]]
+    ))
+    error_message = "All CI DynamoDB access must name only the two exact project tables."
+  }
+  assert {
+    condition     = length(aws_iam_role_policy.github["deploy"].policy) < 10240
+    error_message = "The IAM inline policy must stay within AWS's 10,240-byte limit."
+  }
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_policy.lambda_boundary.policy).Statement :
+      s.Action == ["dynamodb:Query"] && s.Resource == "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-public-energy" &&
+      s.Condition["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] == ["PUBLIC"]
+      if anytrue([for action in s.Action : startswith(action, "dynamodb:")])
+    ])
+    error_message = "Public Lambda's boundary must restrict database access to read-only PUBLIC records."
+  }
 }

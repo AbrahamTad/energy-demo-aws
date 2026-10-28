@@ -1,5 +1,6 @@
 """Publish reviewed frontend assets after Terraform apply, then smoke-test."""
 import json
+import math
 from pathlib import Path
 import subprocess
 import time
@@ -7,6 +8,23 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def verify_public_payload(payload):
+    if not isinstance(payload, dict) or set(payload) != {"project", "status", "records"} or payload["project"] != "EnergyDemo" or payload["status"] != "working":
+        raise ValueError("Invalid public API contract")
+    records = payload["records"]
+    if not isinstance(records, list) or len(records) > 100:
+        raise ValueError("Invalid public record list")
+    sources = set()
+    for record in records:
+        if (not isinstance(record, dict) or set(record) != {"source", "production", "unit"}
+                or not isinstance(record["source"], str) or not record["source"].strip()
+                or record["source"] in sources or record["unit"] != "kWh"
+                or isinstance(record["production"], bool) or not isinstance(record["production"], (int, float))
+                or not math.isfinite(record["production"]) or not 0 <= record["production"] <= 1_000_000_000):
+            raise ValueError("Public API contains invalid or unexpected/private fields")
+        sources.add(record["source"])
 
 
 def main():
@@ -40,12 +58,16 @@ def main():
                 if response.status != 200 or b'<div id="root">' not in response.read():
                     raise ValueError("Frontend smoke test failed")
             with urlopen(site + "/api/energy", timeout=15) as response:
-                records = json.load(response)["records"]
-                if response.status != 200 or len(records) != 4 or {
-                    r["source"] for r in records
-                } != {"Solar", "Wind", "Hydro", "Battery"}:
+                if response.status != 200:
                     raise ValueError("API smoke test failed")
-            print("Frontend and same-origin API: HTTP 200; four sample records.")
+                verify_public_payload(json.load(response))
+            try:
+                with urlopen(site + "/api/me/energy", timeout=15):
+                    raise ValueError("Private API accepted an anonymous request")
+            except HTTPError as error:
+                if error.code not in (401, 403):
+                    raise
+            print("Frontend/public database API: HTTP 200 and valid public schema; private API rejects anonymous access.")
             print("Site:", site)
             return
         except (HTTPError, URLError, ValueError):

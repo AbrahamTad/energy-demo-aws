@@ -5,11 +5,13 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "lambda/energy"))
 
 
 def load(name, relative):
@@ -28,7 +30,10 @@ sample = load("sample", "lambda/energy/handler.py")
 
 class SampleLambdaTests(unittest.TestCase):
     def test_http_api_v2_event_returns_four_records(self):
-        result = sample.lambda_handler({"version": "2.0", "rawPath": "/api/energy"}, None)
+        records = [{"source": source, "production": value, "unit": "kWh"}
+                   for source, value in [("Solar", 125), ("Wind", 80), ("Hydro", 150), ("Battery", 45)]]
+        with patch.object(sample.PublicRepository, "list", return_value=records):
+            result = sample.lambda_handler({"version": "2.0", "routeKey": "GET /api/energy"}, None)
         self.assertEqual(result["statusCode"], 200)
         body = json.loads(result["body"])
         self.assertEqual(body["project"], "EnergyDemo")
@@ -307,7 +312,8 @@ class ArtifactTests(unittest.TestCase):
             (output / "frontend").mkdir()
             (output / "frontend/index.html").write_text("<html></html>")
             with zipfile.ZipFile(output / "lambda.zip", "w") as archive:
-                archive.writestr("handler.py", "# test fixture")
+                for name in ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py", "jwt/__init__.py", "cryptography/__init__.py"]:
+                    archive.writestr(name, "# test fixture")
             hashes = {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in [output / "lambda.zip", output / "frontend/index.html"]}
             (output / "manifest.json").write_text(json.dumps({"commit": "trusted", "sha256": hashes}))

@@ -4,6 +4,10 @@
   background: var(--bg);
   color: var(--ink);
 }
+.record-actions {
+  display: flex;
+  gap: 8px;
+}
 fieldset {
   border: 0;
   margin: 0;

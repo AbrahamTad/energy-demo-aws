@@ -2,8 +2,12 @@
 
 React + TypeScript workspace with Home, Energy Dashboard, Login, Register,
 User Dashboard, Profile and Settings, plus email verification and password
-recovery. Charts show only the current `/api/energy` response; no historical or
-personal readings are fabricated. Source filtering and CSV export work locally.
+recovery. Public charts show the current database-backed `/api/energy` response;
+the protected dashboard loads only the signed-in user's persistent records from
+`/api/me/energy`. Personal create/edit/delete forms, paging and loading/error
+states use Cognito access tokens held in memory. Ownership is enforced server-side
+from the verified Cognito `sub`; no personal readings are fabricated or published.
+Source filtering and CSV export work locally on the public snapshot.
 UI primitives, icons and charts use CSS/SVG; the only new runtime dependencies
 are React Router and AWS Amplify Auth (modular imports).
 
@@ -45,7 +49,9 @@ Only the public energy snapshot stays available without an authenticated session
 
 See [the Cognito deployment guide](../infrastructure/terraform-aws-auth/README.md)
 for costs, resources, state isolation, exact approval-only deployment commands,
-real-account acceptance checks, and the future database authorization boundary.
+real-account acceptance checks and identity-state isolation. See the
+[DynamoDB guide](../infrastructure/terraform-aws/STEP2-DYNAMODB.md) for private API
+authorization, costs, public seed migration and the approval-only release steps.
 
 ## Checks
 
@@ -60,7 +66,8 @@ npm run build -- --mode aws
 
 Vitest + Testing Library exercise the API parser, retry/filter UI, protected
 routes, SRP requests, registration/verification/reset, TOTP challenges, profile
-updates and token storage selection. SDK doubles exist **only in tests**, which
+updates, token storage selection and private CRUD/pagination/account isolation.
+SDK doubles exist **only in tests**, which
 do not call AWS or send email. Live Cognito acceptance requires approval and an
 actual pool. The AWS build adds a restrictive content security policy, allowing
 same-origin assets/API and the regional Cognito endpoint, without inline scripts
@@ -142,10 +149,10 @@ See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rule
 
 ## Exact first-release commit scope
 
-The frontend and separate identity source files from the earlier stages are still
-uncommitted. After review, include the complete release below; committing only
-the latest configuration fixes would omit required application files. Run this
-from the repository root when you choose to stage the release (not executed here).
+This historical 38-file scope was committed in `0a4feca`. For the current
+DynamoDB release, use the **36-file Step 2.4 allowlist** in the
+[DynamoDB guide](../infrastructure/terraform-aws/STEP2-DYNAMODB.md#step-24-exact-release-scope-and-safe-release-order).
+Do not reuse this first-release staging command for Step 2.4.
 
 ```bash
 git add -- \

@@ -18,7 +18,8 @@ resource "aws_lambda_function" "energy" {
   source_code_hash = filebase64sha256("${path.module}/../../artifacts/aws/lambda.zip")
   memory_size      = 128
   timeout          = 3
-  depends_on       = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.lambda_logs]
+  environment { variables = { PUBLIC_ENERGY_TABLE = aws_dynamodb_table.public_energy.name } }
+  depends_on = [aws_cloudwatch_log_group.lambda, aws_iam_role_policy.lambda_logs, aws_iam_role_policy.public_energy]
 }
 
 resource "aws_apigatewayv2_api" "energy" {
@@ -37,9 +38,10 @@ resource "aws_apigatewayv2_integration" "lambda" {
 }
 
 resource "aws_apigatewayv2_route" "energy" {
-  api_id    = aws_apigatewayv2_api.energy.id
-  route_key = "GET /api/energy"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  api_id             = aws_apigatewayv2_api.energy.id
+  route_key          = "GET /api/energy"
+  authorization_type = "NONE"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
 resource "aws_apigatewayv2_stage" "default" {

@@ -62,15 +62,22 @@ provider "aws" {
 }
 
 locals {
-  bucket        = "energy-demo-tfstate-${var.account_id}-eu-north-1"
-  state_key     = "energy-demo/aws/terraform.tfstate"
-  frontend_arn  = "arn:aws:s3:::energy-demo-aws-${var.account_id}-eu-north-1"
-  execution_arn = "arn:aws:iam::${var.account_id}:role/energy-demo-aws/lambda-execution"
-  lambda_arn    = "arn:aws:lambda:eu-north-1:${var.account_id}:function:energy-demo-aws-energy"
+  bucket             = "energy-demo-tfstate-${var.account_id}-eu-north-1"
+  state_key          = "energy-demo/aws/terraform.tfstate"
+  frontend_arn       = "arn:aws:s3:::energy-demo-aws-${var.account_id}-eu-north-1"
+  execution_arn      = "arn:aws:iam::${var.account_id}:role/energy-demo-aws/lambda-execution"
+  user_execution_arn = "arn:aws:iam::${var.account_id}:role/energy-demo-aws/user-energy-execution"
+  execution_arns     = [local.execution_arn, local.user_execution_arn]
+  lambda_arn         = "arn:aws:lambda:eu-north-1:${var.account_id}:function:energy-demo-aws-energy"
+  lambda_arns        = [local.lambda_arn, "arn:aws:lambda:eu-north-1:${var.account_id}:function:energy-demo-aws-user-energy"]
+  public_table_arn   = "arn:aws:dynamodb:eu-north-1:${var.account_id}:table/energy-demo-aws-public-energy"
+  user_table_arn     = "arn:aws:dynamodb:eu-north-1:${var.account_id}:table/energy-demo-aws-user-energy"
+  table_arns         = [local.public_table_arn, local.user_table_arn]
   # Resource tagging APIs require the exact ARN, without the :* suffix.
   log_group_arns = [
     "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/aws/lambda/energy-demo-aws-energy",
-    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/energy-demo-aws/http-api"
+    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/energy-demo-aws/http-api",
+    "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/aws/lambda/energy-demo-aws-user-energy"
   ]
   log_arns = [for arn in local.log_group_arns : "${arn}:*"]
   oidc_arn = var.existing_oidc_provider_arn != "" ? var.existing_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
@@ -132,7 +139,22 @@ resource "aws_iam_policy" "lambda_boundary" {
     Statement = [{
       Effect   = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
       Resource = local.log_arns[0]
+      }, {
+      Effect    = "Allow", Action = ["dynamodb:Query"], Resource = local.public_table_arn
+      Condition = { "ForAllValues:StringEquals" = { "dynamodb:LeadingKeys" = ["PUBLIC"] } }
     }]
+  })
+}
+
+resource "aws_iam_policy" "user_energy_boundary" {
+  name = "user-energy-boundary"
+  path = "/energy-demo-bootstrap/"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = local.log_arns[2] },
+      { Effect = "Allow", Action = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"], Resource = local.user_table_arn }
+    ]
   })
 }
 
@@ -170,8 +192,12 @@ locals {
   ]
   read_statements = [
     { Effect = "Allow", Action = ["s3:Get*", "s3:ListBucket"], Resource = [local.frontend_arn, "${local.frontend_arn}/*"] },
-    { Effect = "Allow", Action = ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:GetFunctionCodeSigningConfig", "lambda:GetPolicy", "lambda:ListVersionsByFunction", "lambda:ListTags"], Resource = [local.lambda_arn] },
-    { Effect = "Allow", Action = ["iam:GetRole", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole"], Resource = [local.execution_arn] },
+    { Effect = "Allow", Action = ["lambda:GetFunction", "lambda:GetFunctionConfiguration", "lambda:GetFunctionCodeSigningConfig", "lambda:GetPolicy", "lambda:ListVersionsByFunction", "lambda:ListTags"], Resource = local.lambda_arns },
+    { Effect = "Allow", Action = ["iam:GetRole", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole"], Resource = local.execution_arns },
+    { Effect = "Allow", Action = ["dynamodb:DescribeTable", "dynamodb:DescribeContinuousBackups", "dynamodb:DescribeTimeToLive", "dynamodb:ListTagsOfResource"], Resource = local.table_arns },
+    # Provider refresh resolves this AWS-managed alias to avoid spurious SSE diffs.
+    # DescribeKey authorizes a key ARN, not an alias ARN; the condition pins it.
+    { Effect = "Allow", Action = ["kms:DescribeKey"], Resource = ["arn:aws:kms:eu-north-1:${var.account_id}:key/*"], Condition = { StringEquals = { "kms:RequestAlias" = "alias/aws/dynamodb" } } },
     { Effect = "Allow", Action = ["logs:DescribeLogGroups"], Resource = ["*"], Condition = { StringEquals = { "aws:RequestedRegion" = "eu-north-1" } } },
     { Effect = "Allow", Action = ["logs:ListTagsForResource"], Resource = local.log_group_arns },
     { Effect = "Allow", Action = ["logs:ListTagsLogGroup"], Resource = local.log_arns },
@@ -184,10 +210,12 @@ locals {
   write_statements = [
     { Effect = "Allow", Action = ["s3:CreateBucket", "s3:DeleteBucket", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy", "s3:PutBucketPublicAccessBlock", "s3:PutBucketOwnershipControls", "s3:DeleteBucketOwnershipControls", "s3:PutEncryptionConfiguration", "s3:PutBucketTagging"], Resource = [local.frontend_arn] },
     { Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = ["${local.frontend_arn}/*"] },
-    { Effect = "Allow", Action = ["lambda:CreateFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:DeleteFunction", "lambda:AddPermission", "lambda:RemovePermission", "lambda:TagResource", "lambda:UntagResource", "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency"], Resource = [local.lambda_arn] },
+    { Effect = "Allow", Action = ["lambda:CreateFunction", "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:DeleteFunction", "lambda:AddPermission", "lambda:RemovePermission", "lambda:TagResource", "lambda:UntagResource", "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency"], Resource = local.lambda_arns },
     { Effect = "Allow", Action = ["iam:CreateRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.lambda_boundary.arn } } },
-    { Effect = "Allow", Action = ["iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:TagRole", "iam:UntagRole"], Resource = [local.execution_arn] },
-    { Effect = "Allow", Action = ["iam:PassRole"], Resource = [local.execution_arn], Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } } },
+    { Effect = "Allow", Action = ["iam:CreateRole"], Resource = [local.user_execution_arn], Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.user_energy_boundary.arn } } },
+    { Effect = "Allow", Action = ["iam:DeleteRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:TagRole", "iam:UntagRole"], Resource = local.execution_arns },
+    { Effect = "Allow", Action = ["iam:PassRole"], Resource = local.execution_arns, Condition = { StringEquals = { "iam:PassedToService" = "lambda.amazonaws.com" } } },
+    { Effect = "Allow", Action = ["dynamodb:CreateTable", "dynamodb:UpdateTable", "dynamodb:TagResource", "dynamodb:UntagResource", "dynamodb:UpdateContinuousBackups"], Resource = local.table_arns },
     { Effect = "Allow", Action = ["logs:TagResource", "logs:UntagResource"], Resource = local.log_group_arns },
     { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagLogGroup", "logs:UntagLogGroup"], Resource = local.log_arns },
     { Effect = "Allow", Action = ["apigateway:PATCH"], Resource = local.api_root_arns },

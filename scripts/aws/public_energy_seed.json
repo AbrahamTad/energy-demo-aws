@@ -1,0 +1,9 @@
+{
+  "description": "Optional migration of the previously published example snapshot; these are not metered readings. Replace with reviewed public data as appropriate.",
+  "records": [
+    {"source": "Solar", "production": 125, "unit": "kWh"},
+    {"source": "Wind", "production": 80, "unit": "kWh"},
+    {"source": "Hydro", "production": 150, "unit": "kWh"},
+    {"source": "Battery", "production": 45, "unit": "kWh"}
+  ]
+}

@@ -18,11 +18,31 @@ variable "budget_email" {
 }
 
 locals {
-  region       = "eu-north-1"
-  name         = "energy-demo-aws"
-  bucket_name  = "energy-demo-aws-${var.account_id}-${local.region}"
-  boundary_arn = "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/lambda-logs-boundary"
-  lambda_name  = "energy-demo-aws-energy"
+  region            = "eu-north-1"
+  name              = "energy-demo-aws"
+  bucket_name       = "energy-demo-aws-${var.account_id}-${local.region}"
+  boundary_arn      = "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/lambda-logs-boundary"
+  lambda_name       = "energy-demo-aws-energy"
+  user_lambda_name  = "energy-demo-aws-user-energy"
+  user_boundary_arn = "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/user-energy-boundary"
+}
+
+variable "cognito_user_pool_id" {
+  type    = string
+  default = "eu-north-1_6m60ePWS0"
+  validation {
+    condition     = can(regex("^eu-north-1_[A-Za-z0-9]+$", var.cognito_user_pool_id))
+    error_message = "Use the separately provisioned Cognito pool in eu-north-1."
+  }
+}
+
+variable "cognito_client_id" {
+  type    = string
+  default = "796jkcsk4dc5scoc77r8ejies7"
+  validation {
+    condition     = can(regex("^[a-z0-9]{1,128}$", var.cognito_client_id))
+    error_message = "Use the public SPA client ID, never a client secret."
+  }
 }
 
 provider "aws" {

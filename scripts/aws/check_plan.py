@@ -28,6 +28,16 @@ def verify(plan, ids):
             ["no-op"], ["update"], ["create"]
         ):
             raise ValueError("Destructive or unsupported plan action: " + address)
+        if resource.get("type") == "aws_dynamodb_table":
+            expected_tables = {"aws_dynamodb_table.public_energy": "energy-demo-aws-public-energy",
+                               "aws_dynamodb_table.user_energy": "energy-demo-aws-user-energy"}
+            after = resource["change"].get("after") or {}
+            if (address not in expected_tables or after.get("name") != expected_tables[address]
+                    or after.get("billing_mode") != "PAY_PER_REQUEST" or after.get("deletion_protection_enabled") is not True
+                    or not (after.get("server_side_encryption") or [{}])[0].get("enabled")
+                    or not (after.get("point_in_time_recovery") or [{}])[0].get("enabled")
+                    or (after.get("on_demand_throughput") or [{}])[0] != {"max_read_request_units": 10, "max_write_request_units": 5}):
+                raise ValueError("Unapproved or unprotected DynamoDB table: " + address)
     for address, expected in ids.items():
         resource = changes.get(address, {})
         change = resource.get("change", {})

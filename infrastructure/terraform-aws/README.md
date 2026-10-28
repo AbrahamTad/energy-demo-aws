@@ -1,8 +1,10 @@
 # EnergyDemo: real AWS deployment preparation
 
-Nothing in this directory has been applied. Real AWS must be explicitly approved.
+Step 2 IAM/tables and public seeding are complete; the application release is
+pending. Further AWS changes must be explicitly approved.
 `../terraform-local/`, Floci, PostgreSQL and the database Lambda are independent.
-The real deployment uses only `lambda/energy/handler.py` sample records.
+See [Step 2: DynamoDB](STEP2-DYNAMODB.md) for the persistent public/private data
+model, authorization, costs, migration order and exact next deployment steps.
 
 ## Stack
 
@@ -11,10 +13,13 @@ The real deployment uses only `lambda/energy/handler.py` sample records.
 - `/api/*` routes unchanged to an HTTP API with a `$default` stage. API caching is
   disabled and the viewer Host header is excluded. No `/dev` origin prefix.
 - GET `/api/energy` uses the Python 3.12 Lambda, 128 MB, three-second timeout,
-  reserved concurrency two. Account quotas must permit reserving two while
-  retaining Lambda's required unreserved capacity; verify this before deployment.
-- A dedicated bounded execution role can only write its own Lambda logs. API and
-  Lambda logs expire after seven days; API logs exclude bodies and credentials.
+  querying only the public DynamoDB table's `PUBLIC` partition.
+- Separate Cognito-protected personal CRUD routes use a five-second, 128 MB
+  Lambda and another table keyed by the verified access token's `sub`.
+- Separate bounded execution roles access only their own table operations and
+  logs. API/Lambda logs expire after seven days; logs exclude bodies and credentials.
+- Both tables use on-demand billing, encryption, PITR, deletion protection and
+  `prevent_destroy`. CI cannot read/write items or delete tables.
 - API rate limit one request/second, burst two. These are best-effort throttles,
   not hard billing limits. No RDS, VPC/NAT gateway, custom domain, database secrets,
   provisioned concurrency, access keys, or Floci endpoints are used.
@@ -84,8 +89,8 @@ before OIDC. There is no fallback. Solo self-approval is intentionally blocked.
 ## Workflow
 
 `build-aws.yml`: PR/main/reusable CI, contents-read only, pinned action SHAs,
-Node 24.21.0 and Python 3.12, `npm ci`, lint, AWS build, sample Lambda/security tests,
-deterministic handler ZIP and a same-commit SHA256 manifest. Terraform init uses
+Node 24.21.0 and Python 3.12, `npm ci`, lint, AWS build, database/JWT/security tests,
+deterministic dependency-inclusive Lambda ZIP and a same-commit SHA256 manifest. Terraform init uses
 `-backend=false`; provider-mocked Terraform tests never call AWS.
 
 `deploy-aws.yml`: **workflow_dispatch from main only**, concurrency one, no
@@ -112,7 +117,8 @@ saved plan. It never silently replans. A stale state requires a new run and revi
 administrator-approved variables, and refuses all deletions/replacements or
 initial creation of these three resources. They also have prevent_destroy guards.
 After apply, it uploads the frontend, invalidates `/` and `/index.html`, and tests
-both the frontend and `/api/energy` for HTTP 200 and four sample records.
+the frontend/public API for HTTP 200 and a safe public-only response shape, plus
+anonymous private-endpoint rejection. Record counts depend on the reviewed seed.
 
 Failed smoke tests do not automatically destroy or roll back infrastructure.
 Investigate before a NEW manual dispatch. There is no destroy workflow. An API
@@ -124,16 +130,19 @@ administrator operation rather than weakening the saved-plan guard.
 From the repo root (no AWS credentials needed):
 
 ```bash
-python3 -m unittest discover -s tests/aws -v
+python3 -m venv /tmp/energy-demo-checks
+/tmp/energy-demo-checks/bin/pip install -r tests/aws/requirements.txt
+/tmp/energy-demo-checks/bin/python -m unittest discover -s tests/aws -v
 cd frontend
 npm ci
 npm run lint
+npm test -- --run
 npm run build -- --mode aws
 cd ..
-python3 scripts/aws/build_artifact.py
-python3 scripts/aws/verify_artifact.py
-terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap
-for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap; do
+/tmp/energy-demo-checks/bin/python scripts/aws/build_artifact.py
+/tmp/energy-demo-checks/bin/python scripts/aws/verify_artifact.py
+for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth; do
+  terraform fmt -check -recursive "$directory"
   terraform -chdir="$directory" init -backend=false -input=false -lockfile=readonly
   terraform -chdir="$directory" validate
   terraform -chdir="$directory" test
@@ -141,5 +150,7 @@ done
 ```
 
 Registry/npm downloads are needed, but these commands do not authenticate to AWS.
+Use clean temporary source copies for Terraform checks if local backend metadata
+or `.tfvars` are present, as described in the Step 2 guide.
 Real Terraform plan/apply and public smoke tests are intentionally not run during
 preparation. GitHub approval APIs and OIDC cannot be end-to-end tested locally.
