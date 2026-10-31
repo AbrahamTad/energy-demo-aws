@@ -70,21 +70,17 @@ sensitive values; restrict Actions artifact access.
    values. Role ARNs/state bucket names are account-derived; no AWS secrets are
    configured. Missing IDs block preflight. CI has no API/CloudFront creation,
    root-deletion or tagging permissions; updates use exact resource ARNs only.
-4. Configure environment **aws-production** with selected branch **main** only,
-   required reviewers, and **prevent self-review**. Add an independent reviewer
-   as a direct **User**, with repository access; team-only review rules fail closed
-   because this guard does not verify team membership. The recorded approval must
-   come from a currently configured required User, not an unlisted administrator.
-   Disable administrator bypass in the GitHub UI. If the
-   repository's plan/visibility does not support these protections, STOP. Do not
-   replace them with a boolean, a dispatch input, or automatic approval.
-5. Protect `main`: require PR review and the Build AWS check; restrict workflow,
-   helper-script and Terraform changes. The planning OIDC role trusts main, so
-   trusted main-branch code is part of the security boundary.
+4. Configure **aws-production** for the solo-owner process: selected **main**
+   branch only, administrator bypass disabled, and no required reviewers,
+   wait timer or custom rules. Keep the environment name/OIDC trust unchanged.
+5. Protect `main` against force pushes/deletion and require the Build AWS check.
+   Restrict workflow/helper/Terraform edits. Main-branch code and the owner account
+   are deployment trust boundaries; there is no independent reviewer in solo mode.
 
-GitHub default-token access to environment settings/review history must work.
-If the API returns 403/404 or required features are unavailable, preflight fails
-before OIDC. There is no fallback. Solo self-approval is intentionally blocked.
+GitHub API verification must work; unavailable settings, artifact provenance,
+run identity or replay history fail closed before deployment credentials.
+See [the solo deployment guide](../../.github/SOLO_DEPLOYMENT.md) for feature
+availability, exact manual settings and failure recovery.
 
 ## Workflow
 
@@ -93,26 +89,24 @@ Node 24.21.0 and Python 3.12, `npm ci`, lint, AWS build, database/JWT/security t
 deterministic dependency-inclusive Lambda ZIP and a same-commit SHA256 manifest. Terraform init uses
 `-backend=false`; provider-mocked Terraform tests never call AWS.
 
-`deploy-aws.yml`: **workflow_dispatch from main only**, concurrency one, no
-cancel-in-progress. It verifies environment protection, builds the dispatch commit,
-uses short-lived OIDC planning credentials, checks account identity, initializes
-the guarded backend and saves the exact plan plus its commit/hash and readable
-summary. The aws-production job waits for GitHub approval and then checks that
-an independent approval was actually recorded for this run/environment. An admin
-bypass without such a review fails before obtaining deployment credentials.
+`plan-aws.yml`: owner-only **workflow_dispatch from main**, validates/builds,
+assumes the separate planning role, verifies account/backend, saves the exact
+non-destructive plan and publishes a readable review, run ID, commit and SHA-256.
+It cannot automatically continue to Apply.
 
-Reruns are deliberately BLOCKED, including rerun-only-plan and rerun-only-apply:
-the guard executes in preflight and before OIDC in BOTH credentialed jobs. GitHub
-review history cannot reliably bind a review to an individual rerun attempt. Use
-**Run workflow** for a NEW workflow_dispatch/run ID after any failure. That new
-run requires a new plan and a fresh independent approval. The guard verifies live
-run metadata (attempt one, commit, repository, workflow path, main and dispatch),
-and accepts exactly one approved decision for the environment. Rejected/multiple
-or unavailable review history fails closed. It never reuses a prior run's review.
+`deploy-aws.yml`: a separate owner-only manual dispatch on current main requires
+that reviewed Plan run ID, commit SHA, plan SHA-256 and the exact phrase
+`APPLY ENERGYDEMO PRODUCTION`. Plan must have succeeded before Apply was requested,
+be less than 24 hours old, and match current main and all deployment settings.
+The checker verifies exact run-scoped artifacts and archive digests, then local
+saved-plan/build checks and resource guards run before deployment credentials.
 
-The apply job downloads only artifacts from this same run, checks hashes/commit,
-assumes the separate deploy role, reinitializes the same backend and applies the
-saved plan. It never silently replans. A stale state requires a new run and review.
+Both workflows share concurrency one, with cancel-in-progress disabled. A durable
+GitHub consumption record is created before deploy OIDC; any failed/interrupted
+attempt after consumption requires a new Plan. Reruns and replays fail closed.
+Apply rechecks the reservation/expiry/main/files and only applies the saved plan;
+it never silently replans. State locking remains mandatory. For complete steps
+and privileged trust boundaries, see the solo deployment guide.
 `check_plan.py` verifies that API/distribution/OAC before-and-after IDs match the
 administrator-approved variables, and refuses all deletions/replacements or
 initial creation of these three resources. They also have prevent_destroy guards.
@@ -153,4 +147,4 @@ Registry/npm downloads are needed, but these commands do not authenticate to AWS
 Use clean temporary source copies for Terraform checks if local backend metadata
 or `.tfvars` are present, as described in the Step 2 guide.
 Real Terraform plan/apply and public smoke tests are intentionally not run during
-preparation. GitHub approval APIs and OIDC cannot be end-to-end tested locally.
+preparation. GitHub artifact/ledger APIs and OIDC cannot be end-to-end tested locally.
