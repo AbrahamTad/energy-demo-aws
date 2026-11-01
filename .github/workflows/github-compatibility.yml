@@ -1,0 +1,64 @@
+name: GitHub-only compatibility test (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RUN GITHUB-ONLY COMPATIBILITY TEST (creates test artifacts and two ledger records)
+        type: string
+        required: true
+
+# Unspecified permissions, including OIDC id-token, are denied.
+permissions:
+  contents: read
+
+concurrency:
+  group: energy-demo-github-compatibility
+  cancel-in-progress: false
+
+env:
+  COMPAT_CONFIRMATION: ${{ inputs.confirmation }}
+  AWS_EC2_METADATA_DISABLED: 'true'
+
+jobs:
+  fixture:
+    if: github.repository == 'AbrahamTad/energy-demo-aws' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify explicit approval and owner; generate non-sensitive test fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/aws/github_compatibility.py fixture
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: github-compat-fixture-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .local/github-compat-fixture/fixture.json
+          retention-days: 1
+          if-no-files-found: error
+
+  verify:
+    needs: fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      # Test-only ledger metadata; no AWS credentials or OIDC permission.
+      deployments: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify artifact, authorization denials, test ledger and interruption rejection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/aws/github_compatibility.py verify
