@@ -97,8 +97,9 @@ to `frontend/.env.local`, fill the same two public IDs, and run `npm run dev`.
 No Cognito hosted domain/callback URL or CORS change is needed for direct SRP.
 
 After separately approved source review/merge, wait for Build AWS to pass.
-Start a **new** `Deploy AWS (manual)` dispatch from `main` and review the saved
-application plan through the existing gates. Do not rerun an old dispatch, bypass
+Start a **new** `Plan AWS (manual)` dispatch from `main`, review the saved
+application plan, then separately dispatch `Apply AWS` with its run/commit/hash
+and explicit confirmation as described in [the solo deployment guide](../../.github/SOLO_DEPLOYMENT.md). Do not rerun an old dispatch, bypass
 preflight, expand deployment IAM, or apply an unreviewed plan. Confirm the prior
 log-ARN bootstrap fix has been applied by an administrator if AWS still has the
 old planning policy. Cognito never needs a grant to the GitHub deployment roles.

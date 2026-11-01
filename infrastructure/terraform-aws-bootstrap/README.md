@@ -104,12 +104,12 @@ Bootstrap-state migration to a separate protected S3 key is a later administrato
 operation with its own reviewed backend change; do not manually upload a stale
 state file or mix it with application state.
 
-Order: review files and IAM → confirm account/OIDC/quotas/billing/reviewer setup →
+Order: review files and IAM → confirm account/OIDC/quotas/billing/solo-owner controls →
 approve administrator bootstrap plan (null resource IDs) → create bootstrap →
 independently review/approve an initial administrator application plan → create
 the initial stack in the application's remote state → verify its IDs/ownership →
 approve the exact-ID bootstrap policy update → configure GitHub environment and
-variables → manually dispatch an update plan → independent approval → CI update.
+variables -> manual Plan -> owner reviews plan/hash -> separate manual Apply.
 The initial administrator application backend uses the documented S3 settings;
 the OIDC-only `init_backend.py` helper is for CI, not administrator sessions.
 A $5 budget is part of the application plan; it is not a hard limit
