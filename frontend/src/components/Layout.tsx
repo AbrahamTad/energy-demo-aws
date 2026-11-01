@@ -10,6 +10,7 @@ const navigation = [
   { to: "/dashboard", label: "My dashboard", icon: "user" },
   { to: "/profile", label: "Profile", icon: "shield" },
   { to: "/settings", label: "Settings", icon: "settings" },
+  { to: "/admin", label: "Administration", icon: "shield" },
 ] as const;
 
 export function Layout() {

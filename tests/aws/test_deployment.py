@@ -349,7 +349,9 @@ class ArtifactTests(unittest.TestCase):
             (output / "frontend").mkdir()
             (output / "frontend/index.html").write_text("<html></html>")
             with zipfile.ZipFile(output / "lambda.zip", "w") as archive:
-                for name in ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py", "jwt/__init__.py", "cryptography/__init__.py"]:
+                for name in ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+                             "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py",
+                             "jwt/__init__.py", "cryptography/__init__.py"]:
                     archive.writestr(name, "# test fixture")
             hashes = {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in [output / "lambda.zip", output / "frontend/index.html"]}

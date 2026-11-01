@@ -19,7 +19,7 @@ def settings():
                                       cache_jwk_set=True, lifespan=300, cache_keys=False)
 
 
-def subject(event):
+def verified_claims(event, expected_client=None):
     headers = {key.lower(): value for key, value in (event.get("headers") or {}).items()}
     authorization = headers.get("authorization", "")
     if not isinstance(authorization, str) or not authorization.startswith("Bearer "):
@@ -28,6 +28,7 @@ def subject(event):
     if not token or len(token) > 8192 or "," in token:
         raise ApiError(401, "A valid access token is required.")
     issuer, client, keys = settings()
+    client = expected_client or client
     try:
         header = jwt.get_unverified_header(token)
         if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str) or not 1 <= len(header["kid"]) <= 128:
@@ -41,8 +42,12 @@ def subject(event):
             raise jwt.InvalidTokenError()
         if "aws.cognito.signin.user.admin" not in claims.get("scope", "").split():
             raise jwt.InvalidTokenError()
-        return owner
+        return claims
     except jwt.PyJWKClientConnectionError:
         raise ApiError(503, "The identity service is temporarily unavailable.") from None
     except (jwt.PyJWTError, ValueError, TypeError, AttributeError):
         raise ApiError(401, "A valid access token is required.") from None
+
+
+def subject(event):
+    return verified_claims(event)["sub"]

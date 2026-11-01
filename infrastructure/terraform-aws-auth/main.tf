@@ -112,3 +112,46 @@ resource "aws_cognito_user_pool_client" "spa" {
 output "user_pool_id" { value = aws_cognito_user_pool.users.id }
 output "spa_client_id" { value = aws_cognito_user_pool_client.spa.id }
 output "jwt_issuer" { value = "https://cognito-idp.eu-north-1.amazonaws.com/${aws_cognito_user_pool.users.id}" }
+
+# Does not alter ordinary user sign-in. Only backend IAM callers can start this flow.
+resource "aws_cognito_user_group" "admins" {
+  name         = "energy-demo-admin"
+  user_pool_id = aws_cognito_user_pool.users.id
+  description  = "Operator-assigned admins; current membership and Cognito TOTP step-up required."
+  lifecycle { prevent_destroy = true }
+}
+resource "aws_cognito_user_pool_client" "admin_step_up" {
+  name                          = "energy-demo-admin-step-up"
+  user_pool_id                  = aws_cognito_user_pool.users.id
+  generate_secret               = false
+  explicit_auth_flows           = ["ALLOW_ADMIN_USER_PASSWORD_AUTH"]
+  prevent_user_existence_errors = "ENABLED"
+  enable_token_revocation       = true
+  access_token_validity         = 15
+  id_token_validity             = 15
+  refresh_token_validity        = 1
+  token_validity_units {
+    access_token  = "minutes"
+    id_token      = "minutes"
+    refresh_token = "days"
+  }
+  allowed_oauth_flows_user_pool_client          = false
+  allowed_oauth_flows                           = []
+  allowed_oauth_scopes                          = []
+  supported_identity_providers                  = ["COGNITO"]
+  callback_urls                                 = []
+  logout_urls                                   = []
+  auth_session_validity                         = 3
+  enable_propagate_additional_user_context_data = false
+  # Step-up never retains or returns refresh tokens. Keep Lite and the existing
+  # IAM password + TOTP flow; rotation requires a separate tier/flow review.
+  refresh_token_rotation {
+    feature = "DISABLED"
+  }
+  read_attributes = ["sub"]
+  # Cognito always permits required attributes; [] can restore broad defaults.
+  # Email is the sole required mutable attribute in the existing pool.
+  write_attributes = ["email"]
+  lifecycle { prevent_destroy = true }
+}
+output "admin_cognito_client_id" { value = aws_cognito_user_pool_client.admin_step_up.id }

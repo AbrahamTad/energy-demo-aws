@@ -13,6 +13,7 @@ import {
   VerifyPage,
 } from "./pages/AuthPages";
 import { ProfilePage, SettingsPage } from "./pages/AccountPages";
+import { AdminPage } from "./pages/AdminPage";
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },
@@ -53,6 +54,7 @@ export function AppRoutes() {
         <Route path="verify" element={<VerifyPage />} />
         <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route element={<RequireAuth />}>
+          <Route path="admin" element={<AdminPage />} />
           <Route path="dashboard" element={<UserDashboardPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
@@ -76,6 +78,10 @@ export function AppRoutes() {
 }
 
 export default function App() {
+  // CloudFront rewrites only this entry path; existing hash routes stay intact.
+  if (["/admin", "/admin/"].includes(window.location.pathname) && !window.location.hash) {
+    window.history.replaceState(null, "", window.location.pathname + "#/admin");
+  }
   return (
     <AppErrorBoundary>
       <HashRouter>

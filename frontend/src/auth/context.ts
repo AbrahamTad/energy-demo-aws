@@ -16,7 +16,7 @@ export function useAuth() {
 }
 export function safeReturnPath(value: unknown) {
   return typeof value === "string" &&
-    ["/dashboard", "/profile", "/settings"].includes(value)
+    ["/dashboard", "/profile", "/settings", "/admin"].includes(value)
     ? value
     : "/dashboard";
 }

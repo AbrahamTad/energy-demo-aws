@@ -20,6 +20,18 @@ guard = load("database_guard", "scripts/aws/check_plan.py")
 
 
 class MigrationTests(unittest.TestCase):
+    def test_plan_rejects_unprotected_admin_routes(self):
+        authorizer = {"address": "aws_apigatewayv2_authorizer.users", "type": "aws_apigatewayv2_authorizer",
+                      "change": {"actions": ["no-op"], "after": {"id": "reviewed-authorizer"}}}
+        after = {"route_key": "GET /api/admin/users", "authorization_type": "JWT", "authorizer_id": "reviewed-authorizer",
+                 "authorization_scopes": ["aws.cognito.signin.user.admin"]}
+        def plan(values):
+            return {"resource_changes": [authorizer, {"address": 'aws_apigatewayv2_route.admin["users"]',
+                "type": "aws_apigatewayv2_route", "change": {"actions": ["create"], "after": values}}]}
+        guard.verify(plan(after), {})
+        for changed in [{"authorization_type": "NONE"}, {"authorizer_id": "wrong"}, {"authorization_scopes": []}, {"route_key": "GET /api/admin/records/all"}]:
+            with self.subTest(changed=changed), self.assertRaises(ValueError): guard.verify(plan({**after, **changed}), {})
+
     def test_seed_defaults_to_dry_run_without_aws_calls(self):
         with patch("sys.argv", ["seed_public_energy.py", "--file", str(ROOT / "scripts/aws/public_energy_seed.json"), "--account-id", "123456789012"]), patch("boto3.Session") as session:
             seed.main()

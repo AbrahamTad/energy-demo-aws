@@ -65,6 +65,13 @@ resource "aws_cloudfront_distribution" "frontend" {
     compress               = true
     # AWS managed CachingOptimized.
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+    dynamic "function_association" {
+      for_each = var.enable_admin ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.admin_entry[0].arn
+      }
+    }
   }
   ordered_cache_behavior {
     path_pattern           = "/api/*"

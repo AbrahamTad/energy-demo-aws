@@ -28,10 +28,12 @@ def verify(output, expected_commit):
             raise ValueError("Artifact checksum mismatch")
     with zipfile.ZipFile(output / "lambda.zip") as archive:
         required = {"handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+                    "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py",
                     "jwt/__init__.py", "cryptography/__init__.py"}
         names = archive.namelist()
         allowed = re.compile(r"(?:jwt|cryptography|cffi|pycparser)/|(?:pyjwt|cryptography|cffi|pycparser)-[0-9][^/]*\.dist-info/|_cffi_backend\.[^/]+\.so$")
-        apps = {"handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py"}
+        apps = {"handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+                "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py"}
         if not required.issubset(names) or len(names) != len(set(names)) or archive.testzip():
             raise ValueError("Invalid energy Lambda ZIP")
         for info in archive.infolist():

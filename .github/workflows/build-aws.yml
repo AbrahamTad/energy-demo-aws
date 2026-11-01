@@ -55,7 +55,7 @@ jobs:
           terraform_wrapper: false
       - name: Validate AWS configurations without credentials or backend access
         run: |
-          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth
+          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth infrastructure/modules/admin-policy
           for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth; do
             terraform -chdir="$directory" init -backend=false -input=false -lockfile=readonly
             terraform -chdir="$directory" validate

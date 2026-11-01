@@ -10,7 +10,8 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_FILES = ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py"]
+APP_FILES = ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+             "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py"]
 
 
 def main():

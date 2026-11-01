@@ -127,3 +127,31 @@ expiry and audience/client binding, derive ownership from verified `sub` on the
 server, and test cross-user isolation. A React route guard is a UI control,
 not a backend authorization boundary. Do not retrofit public `/api/energy` into
 a private API or trust client-submitted account IDs without a separate review.
+
+## Admin identity hardening (not provisioned)
+
+The separate `energy-demo-admin-step-up` client uses only IAM-authorized
+`ADMIN_USER_PASSWORD_AUTH`, followed by a required backend-verified TOTP
+challenge. It has no secret, OAuth flows/scopes/callbacks/logout URLs, or external
+IdPs. Challenge lifetime is explicitly three minutes; access/ID tokens are
+15 minutes and refresh tokens one day, with revocation enabled. Additional user
+context propagation is disabled. The group has no IAM role; pool, clients and
+admin group have Terraform `prevent_destroy` protection.
+
+Attribute reads are limited to `sub`. The live pool requires `sub` (immutable)
+and `email`; Cognito always permits writes to required attributes. Explicit
+`write_attributes = ["email"]` is the minimum supported mutable set, not an
+assertion of zero-write access. An empty list can fall back to broad permissions.
+Email changes still require verification under the unchanged pool policy.
+
+Refresh rotation is explicitly disabled to preserve the existing Lite tier.
+The backend neither retains nor returns the step-up refresh/ID tokens, and has
+no refresh path: every new proof requires password and TOTP. Enabling rotation
+requires separate tier/cost and refresh-flow review; it must not introduce a
+refresh-based bypass of fresh TOTP. Pool-level MFA remains optional for ordinary
+users. Admin enrollment, preferred TOTP, current group membership and proof checks
+remain mandatory backend gates; creating the group/client grants no membership.
+
+Any saved plan predating this hardening is superseded. Review a fresh production
+plan with state locking disabled during read-only preparation; provisioning and
+membership assignment each require separate explicit approval.
