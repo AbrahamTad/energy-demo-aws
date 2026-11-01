@@ -8,7 +8,10 @@ mock_provider "aws" {
     defaults = { arn = "arn:aws:logs:eu-north-1:123456789012:log-group:/aws/lambda/energy-demo-aws-energy" }
   }
   mock_resource "aws_lambda_function" {
-    defaults = { invoke_arn = "arn:aws:apigateway:eu-north-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-north-1:123456789012:function:energy-demo-aws-energy/invocations" }
+    defaults = {
+      arn        = "arn:aws:lambda:eu-north-1:123456789012:function:energy-demo-aws-admin-events"
+      invoke_arn = "arn:aws:apigateway:eu-north-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-north-1:123456789012:function:energy-demo-aws-energy/invocations"
+    }
   }
   mock_resource "aws_s3_bucket" {
     defaults = {
@@ -28,6 +31,49 @@ mock_provider "aws" {
       execution_arn = "arn:aws:execute-api:eu-north-1:123456789012:fixture"
     }
   }
+  mock_resource "aws_apigatewayv2_authorizer" {
+    defaults = { id = "fixtureauthorizer" }
+  }
+}
+
+run "admin_is_opt_in" {
+  command = plan
+  assert {
+    condition     = length(aws_lambda_function.admin) == 0 && length(aws_apigatewayv2_route.admin) == 0 && length(aws_dynamodb_table.admin_control) == 0
+    error_message = "Existing deployments must not silently enable admin infrastructure."
+  }
+}
+
+run "admin_security_and_cost_boundaries" {
+  command = plan
+  variables {
+    enable_admin            = true
+    admin_cognito_client_id = "adminfixtureclient"
+    admin_email_sender      = "sender@example.invalid"
+    admin_email_recipients  = ["test@example.invalid"]
+  }
+  assert {
+    condition     = length(aws_apigatewayv2_route.admin) == 8 && alltrue([for route in aws_apigatewayv2_route.admin : route.authorization_type == "JWT" && route.authorizer_id == aws_apigatewayv2_authorizer.users.id && route.authorization_scopes == toset(["aws.cognito.signin.user.admin"])])
+    error_message = "Every admin route, including step-up and email, must require Cognito access tokens."
+  }
+  assert {
+    condition     = length(aws_lambda_function.admin) == 3 && length(aws_iam_role.admin) == 4 && aws_dynamodb_table.admin_control[0].ttl[0].enabled && aws_dynamodb_table.admin_control[0].ttl[0].attribute_name == "expires" && aws_dynamodb_table.admin_control[0].point_in_time_recovery[0].enabled && aws_dynamodb_table.admin_control[0].deletion_protection_enabled && aws_dynamodb_table.admin_control[0].on_demand_throughput[0].max_write_request_units == 10
+    error_message = "Admin must use dedicated bounded functions/roles and protected, expiring control data."
+  }
+  assert {
+    condition     = alltrue([for s in jsondecode(module.admin_policy.policies["admin"]).Statement : !contains(flatten([s.Resource]), "arn:aws:dynamodb:eu-north-1:123456789012:table/energy-demo-aws-user-energy")]) && jsondecode(module.admin_policy.policies["private"]).Statement[0].Condition["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] == ["$${aws:PrincipalTag/user_sub}"] && jsondecode(module.admin_policy.policies["private"]).Statement[0].Action == ["dynamodb:Query"]
+    error_message = "Admin cannot directly browse private records; the read-only assumed role must enforce owner tags."
+  }
+  assert {
+    condition     = alltrue([for s in jsondecode(module.admin_policy.policies["email"]).Statement : s.Condition.StringEquals["ses:FromAddress"] == "sender@example.invalid" && s.Condition["ForAllValues:StringEquals"]["ses:Recipients"] == ["test@example.invalid"] if contains(s.Action, "ses:SendEmail")]) && alltrue([for s in jsondecode(module.admin_policy.policies["events"]).Statement : !contains(s.Action, "ses:SendEmail")])
+    error_message = "Sending is limited by IAM to the fixed sender and approved recipients; event handlers cannot send."
+  }
+}
+
+run "reject_unconfigured_admin" {
+  command = plan
+  variables { enable_admin = true }
+  expect_failures = [aws_dynamodb_table.admin_control[0]]
 }
 
 override_resource {

@@ -69,3 +69,35 @@ run "reject_simulator_account" {
   variables { account_id = "000000000000" }
   expect_failures = [var.account_id]
 }
+
+run "admin_step_up_is_separate" {
+  command = plan
+  assert {
+    condition     = aws_cognito_user_group.admins.name == "energy-demo-admin" && aws_cognito_user_pool_client.admin_step_up.explicit_auth_flows == toset(["ALLOW_ADMIN_USER_PASSWORD_AUTH"]) && !aws_cognito_user_pool_client.admin_step_up.generate_secret && aws_cognito_user_pool_client.admin_step_up.access_token_validity == 15 && aws_cognito_user_pool_client.admin_step_up.id_token_validity == 15 && aws_cognito_user_pool_client.admin_step_up.refresh_token_validity == 1 && aws_cognito_user_pool_client.admin_step_up.token_validity_units[0].refresh_token == "days" && aws_cognito_user_pool_client.admin_step_up.enable_token_revocation && aws_cognito_user_pool.users.mfa_configuration == "OPTIONAL"
+    error_message = "Admin needs a separate IAM-only password flow; normal SRP authentication and optional user MFA remain unchanged."
+  }
+}
+
+run "admin_client_least_privilege" {
+  command = plan
+  assert {
+    condition = (
+      aws_cognito_user_pool_client.admin_step_up.read_attributes == toset(["sub"]) &&
+      aws_cognito_user_pool_client.admin_step_up.write_attributes == toset(["email"]) &&
+      !aws_cognito_user_pool_client.admin_step_up.allowed_oauth_flows_user_pool_client &&
+      length(aws_cognito_user_pool_client.admin_step_up.allowed_oauth_flows) == 0 &&
+      length(aws_cognito_user_pool_client.admin_step_up.allowed_oauth_scopes) == 0 &&
+      length(aws_cognito_user_pool_client.admin_step_up.callback_urls) == 0 &&
+      length(aws_cognito_user_pool_client.admin_step_up.logout_urls) == 0 &&
+      aws_cognito_user_pool_client.admin_step_up.supported_identity_providers == toset(["COGNITO"]) &&
+      aws_cognito_user_pool_client.admin_step_up.auth_session_validity == 3 &&
+      !aws_cognito_user_pool_client.admin_step_up.enable_propagate_additional_user_context_data &&
+      aws_cognito_user_pool_client.admin_step_up.refresh_token_rotation[0].feature == "DISABLED" &&
+      aws_cognito_user_pool_client.admin_step_up.prevent_user_existence_errors == "ENABLED" &&
+      aws_cognito_user_pool_client.admin_step_up.token_validity_units[0].access_token == "minutes" &&
+      aws_cognito_user_pool_client.admin_step_up.token_validity_units[0].id_token == "minutes" &&
+      aws_cognito_user_group.admins.role_arn == null
+    )
+    error_message = "Admin step-up must have minimal attribute permissions, no OAuth/federation/IAM role, and explicit short challenge and token settings."
+  }
+}

@@ -48,7 +48,7 @@ def main():
     ], check=True)
     invalidation = json.loads(subprocess.check_output([
         "aws", "cloudfront", "create-invalidation", "--distribution-id", distribution,
-        "--paths", "/", "/index.html",
+        "--paths", "/", "/index.html", "/admin", "/admin/",
     ], text=True))["Invalidation"]["Id"]
     subprocess.run(["aws", "cloudfront", "wait", "invalidation-completed",
                     "--distribution-id", distribution, "--id", invalidation], check=True)
@@ -67,6 +67,17 @@ def main():
             except HTTPError as error:
                 if error.code not in (401, 403):
                     raise
+            if outputs.get("admin_enabled", {}).get("value") is True:
+                with urlopen(site + "/admin", timeout=15) as response:
+                    if response.status != 200 or b'<div id="root">' not in response.read():
+                        raise ValueError("Admin entry smoke test failed")
+                for path in ["/api/admin/users", "/api/admin/records/mine", "/api/admin/email"]:
+                    try:
+                        with urlopen(site + path, timeout=15):
+                            raise ValueError("Admin API accepted an anonymous request")
+                    except HTTPError as error:
+                        if error.code not in (401, 403):
+                            raise
             print("Frontend/public database API: HTTP 200 and valid public schema; private API rejects anonymous access.")
             print("Site:", site)
             return

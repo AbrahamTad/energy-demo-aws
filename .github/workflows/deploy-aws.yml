@@ -36,6 +36,11 @@ env:
   TF_WORKSPACE: default
   TF_VAR_account_id: ${{ vars.AWS_ACCOUNT_ID }}
   TF_VAR_budget_email: ${{ secrets.AWS_BUDGET_EMAIL }}
+  # Defaults preserve the existing deployment. Enabling requires reviewed bootstrap preparation.
+  TF_VAR_enable_admin: ${{ vars.AWS_ENABLE_ADMIN || 'false' }}
+  TF_VAR_admin_cognito_client_id: ${{ vars.AWS_ADMIN_COGNITO_CLIENT_ID }}
+  TF_VAR_admin_email_sender: ${{ vars.AWS_ADMIN_EMAIL_SENDER }}
+  TF_VAR_admin_email_recipients: ${{ vars.AWS_ADMIN_EMAIL_RECIPIENTS || '[]' }}
   AWS_API_ID: ${{ vars.AWS_API_ID }}
   AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
   AWS_CLOUDFRONT_OAC_ID: ${{ vars.AWS_CLOUDFRONT_OAC_ID }}

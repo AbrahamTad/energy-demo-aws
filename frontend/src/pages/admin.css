@@ -1,0 +1,214 @@
+.admin-page {
+  max-width: 1200px;
+  margin: auto;
+}
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 20px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  margin: 24px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.admin-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 12px 17px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.admin-tabs button[aria-current] {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.admin-privacy {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 22px;
+}
+.admin-privacy strong {
+  color: var(--green);
+}
+.admin-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  margin: 16px 0;
+}
+.admin-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.admin-panel h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0;
+}
+.admin-panel > h2 {
+  margin-bottom: 16px;
+}
+.admin-panel p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 26px 0;
+}
+.admin-stat {
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+.admin-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: capitalize;
+  margin-bottom: 12px;
+}
+.admin-stat strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 1.1rem;
+  color: var(--green);
+}
+.admin-stat .admin-warning {
+  color: var(--error);
+}
+.admin-facts {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 14px;
+  font-size: 0.9rem;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.admin-facts dt {
+  color: var(--muted);
+}
+.admin-facts dd {
+  margin: 0;
+}
+.admin-caption {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.admin-table-scroll {
+  overflow-x: auto;
+}
+.admin-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.admin-table-scroll th {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface-soft);
+}
+.admin-table-scroll th,
+.admin-table-scroll td {
+  padding: 17px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 15px;
+  padding-top: 22px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.admin-scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  font-size: 0.85rem;
+}
+.admin-page input,
+.admin-page select {
+  display: block;
+  margin: 8px 0 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  max-width: 100%;
+}
+.admin-page label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.admin-verification {
+  max-width: 580px;
+}
+.admin-verification input {
+  width: 100%;
+}
+.admin-email-result {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+.admin-email-result .button {
+  margin: 4px 8px 4px 0;
+}
+@media (max-width: 1000px) {
+  .admin-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .admin-panel {
+    padding: 18px;
+  }
+  .admin-tabs button {
+    flex: 1 1 auto;
+    padding: 10px;
+  }
+  .admin-facts {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .admin-facts dd {
+    margin-bottom: 12px;
+  }
+  .admin-page .page-heading {
+    display: block;
+  }
+  .admin-pagination {
+    justify-content: space-between;
+  }
+}

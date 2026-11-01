@@ -1,10 +1,37 @@
 mock_provider "aws" {
   override_during = plan
+  mock_resource "aws_sns_topic" {
+    defaults = { arn = "arn:aws:sns:eu-north-1:123456789012:energy-demo-aws-admin-email" }
+  }
+  mock_resource "aws_kms_key" {
+    defaults = { arn = "arn:aws:kms:eu-north-1:123456789012:key/11111111-1111-4111-8111-111111111111" }
+  }
   mock_resource "aws_s3_bucket" {
     defaults = { arn = "arn:aws:s3:::energy-demo-tfstate-123456789012-eu-north-1" }
   }
   mock_resource "aws_iam_policy" {
     defaults = { arn = "arn:aws:iam::123456789012:policy/energy-demo-bootstrap/lambda-logs-boundary" }
+  }
+}
+
+run "admin_operator_preparation" {
+  command = plan
+  variables {
+    enable_admin           = true
+    admin_email_sender     = "sender@example.invalid"
+    admin_email_recipients = ["test@example.invalid"]
+  }
+  assert {
+    condition     = length(aws_iam_policy.admin_boundary) == 4 && length(aws_sesv2_email_identity.admin) == 2 && aws_sns_topic.admin_email[0].kms_master_key_id == aws_kms_key.admin_email[0].arn && aws_kms_key.admin_email[0].enable_key_rotation
+    error_message = "Admin preparation must provision bounded roles and SES events encrypted with a service-authorized customer key."
+  }
+  assert {
+    condition     = alltrue([for p in aws_iam_policy.github_admin : length(p.policy) < 6144]) && !contains(keys(aws_iam_role_policy_attachment.github_admin), "plan_write") && aws_iam_role_policy_attachment.github_admin["plan_read"].role == aws_iam_role.github["plan"].name
+    error_message = "Additional managed CI policies must fit AWS limits and grant the plan role read-only permissions."
+  }
+  assert {
+    condition     = alltrue([for s in jsondecode(aws_iam_policy.github_admin["create"].policy).Statement : contains(s.Action, "iam:CreateRole") && can(s.Condition.StringEquals["iam:PermissionsBoundary"])]) && alltrue(flatten([for p in aws_iam_policy.github_admin : [for s in jsondecode(p.policy).Statement : alltrue([for a in s.Action : !startswith(a, "cognito-idp:") && !startswith(a, "ses:") && !contains(["dynamodb:GetItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:PutItem", "dynamodb:UpdateItem"], a)])]]))
+    error_message = "CI cannot provision unbounded roles, manage identities, send email or access database items."
   }
 }
 
