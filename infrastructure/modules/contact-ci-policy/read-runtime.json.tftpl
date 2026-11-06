@@ -1,0 +1,75 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ContactFunctions",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetFunctionCodeSigningConfig",
+        "lambda:GetPolicy",
+        "lambda:ListVersionsByFunction",
+        "lambda:ListTags",
+        "lambda:GetFunctionConcurrency"
+      ],
+      "Resource": ${function_arns}
+    },
+    {
+      "Sid": "ContactEventProcessing",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetFunctionEventInvokeConfig"
+      ],
+      "Resource": ${events_function}
+    },
+    {
+      "Sid": "ContactMappings",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:GetEventSourceMapping",
+        "lambda:ListTags"
+      ],
+      "Resource": ${mapping_arns}
+    },
+    {
+      "Sid": "ContactRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole"
+      ],
+      "Resource": ${role_arns}
+    },
+    {
+      "Sid": "ContactTable",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource"
+      ],
+      "Resource": ${table_arn}
+    },
+    {
+      "Sid": "ContactLogTags",
+      "Effect": "Allow",
+      "Action": [
+        "logs:ListTagsForResource"
+      ],
+      "Resource": ${log_group_arns}
+    },
+    {
+      "Sid": "ContactLegacyLogTags",
+      "Effect": "Allow",
+      "Action": [
+        "logs:ListTagsLogGroup"
+      ],
+      "Resource": ${log_stream_arns}
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ContactQueueSettings",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:CreateQueue",
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue",
+        "sqs:UntagQueue"
+      ],
+      "Resource": ${queue_arns}
+    },
+    {
+      "Sid": "ContactTopicSettings",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:SetTopicAttributes",
+        "sns:TagResource",
+        "sns:UntagResource"
+      ],
+      "Resource": ${topic_arn}
+    },
+    {
+      "Sid": "ContactSubscribeEvents",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Subscribe"
+      ],
+      "Resource": ${topic_arn},
+      "Condition": {
+        "StringEquals": {
+          "sns:Protocol": "lambda",
+          "sns:Endpoint": ${events_function}
+        }
+      }
+    },
+    {
+      "Sid": "ContactSubscriptionSettings",
+      "Effect": "Allow",
+      "Action": [
+        "sns:SetSubscriptionAttributes"
+      ],
+      "Resource": ${subscription_arn}
+    },
+    {
+      "Sid": "ContactDeliveryConfiguration",
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateConfigurationSet",
+        "ses:PutConfigurationSetSuppressionOptions",
+        "ses:CreateConfigurationSetEventDestination",
+        "ses:UpdateConfigurationSetEventDestination",
+        "ses:TagResource",
+        "ses:UntagResource"
+      ],
+      "Resource": ${configuration_arn}
+    },
+    {
+      "Sid": "ContactRuleSettings",
+      "Effect": "Allow",
+      "Action": [
+        "events:PutRule",
+        "events:TagResource",
+        "events:UntagResource"
+      ],
+      "Resource": ${rule_arn}
+    },
+    {
+      "Sid": "ContactRelayTarget",
+      "Effect": "Allow",
+      "Action": [
+        "events:PutTargets"
+      ],
+      "Resource": ${rule_arn},
+      "Condition": {
+        "ArnEquals": {
+          "events:TargetArn": ${relay_function}
+        }
+      }
+    },
+    {
+      "Sid": "ContactAlarmSettings",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "Resource": ${alarm_arns}
+    },
+    {
+      "Sid": "ContactViewerCode",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateFunction",
+        "cloudfront:UpdateFunction",
+        "cloudfront:PublishFunction",
+        "cloudfront:TagResource",
+        "cloudfront:UntagResource"
+      ],
+      "Resource": ${edge_arn}
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ContactFunctionUpdates",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:TagResource",
+        "lambda:UntagResource"
+      ],
+      "Resource": ${function_arns}
+    },
+    {
+      "Sid": "ContactWorkerConcurrency",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:PutFunctionConcurrency"
+      ],
+      "Resource": ${worker_function}
+    },
+    {
+      "Sid": "ContactInvocationSources",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:AddPermission"
+      ],
+      "Resource": ${function_arns},
+      "Condition": {
+        "StringEquals": {
+          "lambda:Principal": [
+            "apigateway.amazonaws.com",
+            "sns.amazonaws.com",
+            "events.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ContactAsyncFailureDestination",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:PutFunctionEventInvokeConfig",
+        "lambda:UpdateFunctionEventInvokeConfig"
+      ],
+      "Resource": ${events_function}
+    },
+%{ if mapping_update_statements != "" }
+    ${mapping_update_statements},
+%{ endif }
+    {
+      "Sid": "ContactMappingTags",
+      "Effect": "Allow",
+      "Action": ["lambda:TagResource", "lambda:UntagResource"],
+      "Resource": ${mapping_arns}
+    },
+    {
+      "Sid": "ContactRolePolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": ${role_arns}
+    },
+    {
+      "Sid": "ContactPassRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": ${role_arns},
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ContactTableSettings",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:UpdateTable",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:UpdateContinuousBackups",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource"
+      ],
+      "Resource": ${table_arn}
+    },
+    {
+      "Sid": "ContactLogRetention",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagLogGroup",
+        "logs:UntagLogGroup"
+      ],
+      "Resource": ${log_stream_arns}
+    },
+    {
+      "Sid": "ContactLogTags",
+      "Effect": "Allow",
+      "Action": [
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": ${log_group_arns}
+    }
+  ]
+}

@@ -38,9 +38,22 @@ env:
   TF_VAR_budget_email: ${{ secrets.AWS_BUDGET_EMAIL }}
   # Defaults preserve the existing deployment. Enabling requires reviewed bootstrap preparation.
   TF_VAR_enable_admin: ${{ vars.AWS_ENABLE_ADMIN || 'false' }}
+  TF_VAR_admin_email_testing_enabled: ${{ vars.AWS_ADMIN_EMAIL_TESTING_ENABLED || 'false' }}
   TF_VAR_admin_cognito_client_id: ${{ vars.AWS_ADMIN_COGNITO_CLIENT_ID }}
   TF_VAR_admin_email_sender: ${{ vars.AWS_ADMIN_EMAIL_SENDER }}
   TF_VAR_admin_email_recipients: ${{ vars.AWS_ADMIN_EMAIL_RECIPIENTS || '[]' }}
+  TF_VAR_enable_contact: ${{ vars.AWS_ENABLE_CONTACT || 'false' }}
+  TF_VAR_contact_sender: ${{ vars.AWS_CONTACT_SENDER }}
+  TF_VAR_contact_sender_display_name: ${{ vars.AWS_CONTACT_SENDER_DISPLAY_NAME || 'EnergyDemo Support' }}
+  TF_VAR_contact_reply_to: ${{ vars.AWS_CONTACT_REPLY_TO }}
+  TF_VAR_contact_admin_email: ${{ vars.AWS_CONTACT_ADMIN_EMAIL }}
+  TF_VAR_contact_hostnames: ${{ vars.AWS_CONTACT_HOSTNAMES || '[]' }}
+  TF_VAR_contact_site_origin: ${{ vars.AWS_CONTACT_SITE_ORIGIN }}
+  TF_VAR_contact_alarm_topic_arn: ${{ vars.AWS_CONTACT_ALARM_TOPIC_ARN }}
+  TF_VAR_contact_origin_token: ${{ secrets.AWS_CONTACT_ORIGIN_TOKEN }}
+  TF_VAR_contact_email_sending_enabled: ${{ vars.AWS_CONTACT_EMAIL_SENDING_ENABLED || 'false' }}
+  TF_VAR_contact_customer_email_enabled: ${{ vars.AWS_CONTACT_CUSTOMER_EMAIL_ENABLED || 'false' }}
+  VITE_TURNSTILE_SITE_KEY: ${{ vars.CONTACT_TURNSTILE_SITE_KEY }}
   AWS_API_ID: ${{ vars.AWS_API_ID }}
   AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
   AWS_CLOUDFRONT_OAC_ID: ${{ vars.AWS_CLOUDFRONT_OAC_ID }}

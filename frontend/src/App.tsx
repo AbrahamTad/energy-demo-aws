@@ -13,6 +13,7 @@ import {
   VerifyPage,
 } from "./pages/AuthPages";
 import { ProfilePage, SettingsPage } from "./pages/AccountPages";
+import { ContactPage } from "./pages/ContactPage";
 import { AdminPage } from "./pages/AdminPage";
 
 class AppErrorBoundary extends Component<
@@ -48,6 +49,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
+        <Route path="contact" element={<ContactPage />} />
         <Route path="energy" element={<EnergyPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
@@ -55,6 +57,7 @@ export function AppRoutes() {
         <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route element={<RequireAuth />}>
           <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/messages" element={<AdminPage />} />
           <Route path="dashboard" element={<UserDashboardPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />

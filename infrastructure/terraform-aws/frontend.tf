@@ -49,6 +49,13 @@ resource "aws_cloudfront_distribution" "frontend" {
   origin {
     domain_name = trimprefix(aws_apigatewayv2_api.energy.api_endpoint, "https://")
     origin_id   = "energy-api"
+    dynamic "custom_header" {
+      for_each = var.enable_contact ? [1] : []
+      content {
+        name  = "X-Energy-Contact-Origin"
+        value = var.contact_origin_token
+      }
+    }
     # Empty origin path preserves /api/energy for the HTTP API's $default stage.
     custom_origin_config {
       http_port              = 80
@@ -74,6 +81,13 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
   ordered_cache_behavior {
+    dynamic "function_association" {
+      for_each = var.enable_contact ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.contact_viewer[0].arn
+      }
+    }
     path_pattern           = "/api/*"
     target_origin_id       = "energy-api"
     viewer_protocol_policy = "https-only"

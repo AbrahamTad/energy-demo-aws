@@ -17,9 +17,11 @@ mock_provider "aws" {
 run "admin_operator_preparation" {
   command = plan
   variables {
-    enable_admin           = true
-    admin_email_sender     = "sender@example.invalid"
-    admin_email_recipients = ["test@example.invalid"]
+    admin_email_testing_enabled = true
+    enable_admin_ci             = true
+    enable_admin                = true
+    admin_email_sender          = "sender@example.invalid"
+    admin_email_recipients      = ["test@example.invalid"]
   }
   assert {
     condition     = length(aws_iam_policy.admin_boundary) == 4 && length(aws_sesv2_email_identity.admin) == 2 && aws_sns_topic.admin_email[0].kms_master_key_id == aws_kms_key.admin_email[0].arn && aws_kms_key.admin_email[0].enable_key_rotation
@@ -269,4 +271,30 @@ run "database_iam_stays_bounded" {
     ])
     error_message = "Public Lambda's boundary must restrict database access to read-only PUBLIC records."
   }
+}
+
+run "admin_boundaries_only_no_send_no_ci" {
+  command = plan
+  variables {
+    enable_admin      = true
+    enable_contact    = true
+    enable_contact_ci = false
+  }
+  assert {
+    condition     = toset(keys(aws_iam_policy.admin_boundary)) == toset(["admin", "private"]) && length(aws_iam_policy.contact_boundary) == 5 && length(aws_iam_policy.github_admin) == 0 && length(aws_iam_role_policy_attachment.github_admin) == 0
+    error_message = "Only the two required Admin boundaries may accompany existing Contact boundaries, without CI grants."
+  }
+  assert {
+    condition     = length(aws_sesv2_email_identity.admin) == 0 && length(aws_sesv2_configuration_set.admin) == 0 && length(aws_sns_topic.admin_email) == 0 && length(aws_sns_topic_policy.admin_email) == 0 && length(aws_sesv2_configuration_set_event_destination.admin) == 0 && length(aws_kms_key.admin_email) == 0
+    error_message = "No-send preparation must not touch SES identities or Admin email event infrastructure."
+  }
+  assert {
+    condition     = alltrue([for p in aws_iam_policy.admin_boundary : anytrue([for s in jsondecode(p.policy).Statement : s.Effect == "Deny" && contains(s.Action, "ses:SendEmail") && s.Resource == "*"])])
+    error_message = "Admin boundaries must explicitly deny SES sending."
+  }
+}
+run "admin_ci_requires_explicit_admin_preparation" {
+  command = plan
+  variables { enable_admin_ci = true }
+  expect_failures = [var.enable_admin_ci]
 }

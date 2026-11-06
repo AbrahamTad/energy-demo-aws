@@ -1,3 +1,7 @@
+variable "email_testing_enabled" {
+  type    = bool
+  default = false
+}
 variable "account_id" { type = string }
 variable "pool_id" { type = string }
 variable "sender" { type = string }
@@ -39,9 +43,11 @@ locals {
 output "policies" {
   value = { for name, statements in local.policies : name => jsonencode({
     Version = "2012-10-17"
-    Statement = concat(statements, name == "private" ? [] : [{
+    Statement = concat([for statement in statements : statement if var.email_testing_enabled || !anytrue([for action in statement.Action : startswith(action, "ses:Send") || action == "ses:GetEmailIdentity"])], name == "private" ? [] : [{
       Effect   = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"],
       Resource = "arn:aws:logs:eu-north-1:${var.account_id}:log-group:/aws/lambda/energy-demo-aws-admin-${name}:*"
+      }], var.email_testing_enabled ? [] : [{
+      Effect = "Deny", Action = ["ses:SendEmail", "ses:SendRawEmail", "ses:SendBulkEmail", "ses:SendTemplatedEmail", "ses:SendBulkTemplatedEmail"], Resource = "*"
     }])
   }) }
 }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { adminRequest, AdminError } from "../lib/admin";
 import type { AdminPage as Page, AdminStatus, EmailTest } from "../lib/admin";
 import "./admin.css";
+
+import { CustomerMessages } from "./CustomerMessages";
 
 const sections = [
   "Overview",
@@ -11,6 +13,7 @@ const sections = [
   "Energy records",
   "Email testing",
   "System status",
+  "Customer messages",
 ] as const;
 type Section = (typeof sections)[number];
 type EmailDraft = {
@@ -21,13 +24,16 @@ type EmailDraft = {
 };
 
 export function AdminPage() {
+  const location = useLocation();
   const [access, setAccess] = useState<
     "checking" | "verify" | "granted" | "denied"
   >("checking");
   const [error, setError] = useState("");
   const [challenge, setChallenge] = useState("");
   const [busy, setBusy] = useState(false);
-  const [section, setSection] = useState<Section>("Overview");
+  const [section, setSection] = useState<Section>(() =>
+    location.pathname === "/admin/messages" ? "Customer messages" : "Overview",
+  );
   // Keep the same request ID across tabs and access rechecks after focus changes.
   const [emailDraft, setEmailDraft] = useState<EmailDraft>(() => ({
     id: crypto.randomUUID(),
@@ -194,6 +200,7 @@ export function AdminPage() {
               own account.
             </span>
           </div>
+          {section === "Customer messages" && <CustomerMessages />}
           {(section === "Overview" || section === "System status") && (
             <Status
               key={section}

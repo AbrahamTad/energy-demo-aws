@@ -41,7 +41,7 @@ class AdminTests(unittest.TestCase):
             "AWS_DEFAULT_REGION": "eu-north-1", "AWS_EC2_METADATA_DISABLED": "true",
             "COGNITO_USER_POOL_ID": POOL, "COGNITO_CLIENT_ID": CLIENT,
             "ADMIN_COGNITO_CLIENT_ID": "adminclient", "ADMIN_CONTROL_TABLE": "admin-control",
-            "ADMIN_EMAIL_SENDER": "sender@example.invalid", "ADMIN_EMAIL_RECIPIENTS": '["test@example.invalid"]',
+            "ADMIN_EMAIL_TESTING_ENABLED": "true", "ADMIN_EMAIL_SENDER": "sender@example.invalid", "ADMIN_EMAIL_RECIPIENTS": '["test@example.invalid"]',
             "ADMIN_EMAIL_CONFIGURATION_SET": "energy-demo-aws-admin", "ADMIN_EMAIL_TOPIC_ARN": TOPIC,
             "PUBLIC_ENERGY_TABLE": "public", "USER_ENERGY_TABLE": "private",
             "ADMIN_PRIVATE_ROLE_ARN": "arn:aws:iam::123456789012:role/energy-demo-aws/admin-private"})
@@ -220,6 +220,22 @@ class AdminTests(unittest.TestCase):
         second = self.call("GET /api/admin/records/public", query={"cursor": value["next_cursor"]})[1]
         self.assertEqual(len(second["records"]), 1); self.assertIsNone(second["next_cursor"])
         self.assertNotIn("hidden", json.dumps(value))
+
+    def test_disabled_email_cannot_read_reserve_or_send_even_when_called_directly(self):
+        for value in [None, "false", "TRUE", "1", ""]:
+            with self.subTest(value=value), patch.dict(os.environ):
+                if value is None:
+                    os.environ.pop("ADMIN_EMAIL_TESTING_ENABLED", None)
+                else:
+                    os.environ["ADMIN_EMAIL_TESTING_ENABLED"] = value
+                with patch.object(email, "client") as client, patch.object(email, "get") as get:
+                    with self.assertRaises(ApiError) as error:
+                        email.send({}, OWNER)
+                    self.assertEqual(error.exception.status, 503)
+                    client.assert_not_called()
+                    get.assert_not_called()
+                self.assertEqual(self.call("POST /api/admin/email", {"id": str(uuid4()), "recipient": "test@example.invalid"})[0], 503)
+                self.ses.send_email.assert_not_called()
 
     def test_email_requires_verified_allowlist_and_fixed_content(self):
         identifier = str(uuid4())
