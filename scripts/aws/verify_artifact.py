@@ -15,6 +15,9 @@ def verify(output, expected_commit):
     manifest = json.loads((output / "manifest.json").read_text())
     if manifest["commit"] != expected_commit:
         raise ValueError("Build artifact belongs to a different commit")
+    if os.environ.get("TF_VAR_enable_contact") == "true" and manifest.get("contact_site_key_sha256") != hashlib.sha256(
+            os.environ.get("VITE_TURNSTILE_SITE_KEY", "").encode()).hexdigest():
+        raise ValueError("Contact build widget key differs from reviewed deployment configuration")
     actual = {p.relative_to(output).as_posix() for p in output.rglob("*")
               if p.is_file() and p.name != "manifest.json"}
     if actual != set(manifest["sha256"]):
@@ -28,12 +31,14 @@ def verify(output, expected_commit):
             raise ValueError("Artifact checksum mismatch")
     with zipfile.ZipFile(output / "lambda.zip") as archive:
         required = {"handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+                    "contact_common.py", "contact_api.py", "contact_jobs.py", "contact_admin.py", "contact_events.py",
                     "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py",
                     "jwt/__init__.py", "cryptography/__init__.py"}
         names = archive.namelist()
         allowed = re.compile(r"(?:jwt|cryptography|cffi|pycparser)/|(?:pyjwt|cryptography|cffi|pycparser)-[0-9][^/]*\.dist-info/|_cffi_backend\.[^/]+\.so$")
         apps = {"handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
-                "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py"}
+                "contact_common.py", "contact_api.py", "contact_jobs.py", "contact_admin.py", "contact_events.py",
+                    "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py"}
         if not required.issubset(names) or len(names) != len(set(names)) or archive.testzip():
             raise ValueError("Invalid energy Lambda ZIP")
         for info in archive.infolist():

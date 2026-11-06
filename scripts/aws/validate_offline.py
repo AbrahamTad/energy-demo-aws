@@ -19,7 +19,7 @@ def main():
         for name in ["terraform-aws", "terraform-aws-bootstrap", "terraform-aws-auth"]:
             source, destination = ROOT / "infrastructure" / name, target / "infrastructure" / name
             destination.mkdir()
-            for file in [*source.glob("*.tf"), source / ".terraform.lock.hcl"]:
+            for file in [*source.glob("*.tf"), *source.glob("*.js"), source / ".terraform.lock.hcl"]:
                 shutil.copyfile(file, destination / file.name)
             shutil.copytree(source / "tests", destination / "tests")
             # Reuse only provider binaries, never backend metadata from .terraform/.

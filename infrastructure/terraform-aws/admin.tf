@@ -1,3 +1,13 @@
+variable "admin_email_testing_enabled" {
+  type        = bool
+  default     = false
+  description = "Separate explicit opt-in for Admin SES test sending; keep false for Contact no-send rollout."
+  validation {
+    condition     = !var.admin_email_testing_enabled || var.enable_admin
+    error_message = "Admin email testing requires separately enabled Admin infrastructure."
+  }
+}
+
 variable "enable_admin" {
   type        = bool
   default     = false
@@ -17,25 +27,27 @@ variable "admin_email_recipients" {
 }
 
 locals {
-  admin_functions = var.enable_admin ? { admin = "admin_handler.lambda_handler", email = "admin_email.lambda_handler", events = "admin_events.lambda_handler" } : {}
-  admin_routes = var.enable_admin ? {
+  admin_functions = var.enable_admin ? merge({ admin = "admin_handler.lambda_handler" }, var.admin_email_testing_enabled ? { email = "admin_email.lambda_handler", events = "admin_events.lambda_handler" } : {}) : {}
+  admin_routes = var.enable_admin ? merge({
     session_get  = { method = "GET", path = "/api/admin/session", handler = "admin" }
     session_post = { method = "POST", path = "/api/admin/session", handler = "admin" }
     users        = { method = "GET", path = "/api/admin/users", handler = "admin" }
     public       = { method = "GET", path = "/api/admin/records/public", handler = "admin" }
     mine         = { method = "GET", path = "/api/admin/records/mine", handler = "admin" }
     status       = { method = "GET", path = "/api/admin/status", handler = "admin" }
-    email_get    = { method = "GET", path = "/api/admin/email", handler = "email" }
-    email_post   = { method = "POST", path = "/api/admin/email", handler = "email" }
-  } : {}
+    }, var.admin_email_testing_enabled ? {
+    email_get  = { method = "GET", path = "/api/admin/email", handler = "email" }
+    email_post = { method = "POST", path = "/api/admin/email", handler = "email" }
+  } : {}) : {}
 }
 
 module "admin_policy" {
-  source     = "../modules/admin-policy"
-  account_id = var.account_id
-  pool_id    = var.cognito_user_pool_id
-  sender     = var.admin_email_sender
-  recipients = var.admin_email_recipients
+  source                = "../modules/admin-policy"
+  account_id            = var.account_id
+  pool_id               = var.cognito_user_pool_id
+  sender                = var.admin_email_sender
+  recipients            = var.admin_email_recipients
+  email_testing_enabled = var.admin_email_testing_enabled
 }
 
 resource "aws_dynamodb_table" "admin_control" {
@@ -61,14 +73,14 @@ resource "aws_dynamodb_table" "admin_control" {
   lifecycle {
     prevent_destroy = true
     precondition {
-      condition     = can(regex("^[a-z0-9]{1,128}$", var.admin_cognito_client_id)) && length(var.admin_email_recipients) > 0 && length(var.admin_email_recipients) <= 5 && alltrue([for email in setunion(var.admin_email_recipients, toset([var.admin_email_sender])) : can(regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", email))])
-      error_message = "Admin requires a dedicated Cognito client, fixed sender and 1-5 approved SES recipients."
+      condition     = can(regex("^[a-z0-9]{1,128}$", var.admin_cognito_client_id)) && (!var.admin_email_testing_enabled || (length(var.admin_email_recipients) > 0 && length(var.admin_email_recipients) <= 5 && alltrue([for email in setunion(var.admin_email_recipients, toset([var.admin_email_sender])) : can(regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", email))])))
+      error_message = "Admin requires a dedicated Cognito client; separately enabled email testing also requires a fixed sender and 1-5 approved SES recipients."
     }
   }
 }
 
 resource "aws_iam_role" "admin" {
-  for_each             = var.enable_admin ? toset(["admin", "email", "events", "private"]) : toset([])
+  for_each             = var.enable_admin ? toset(var.admin_email_testing_enabled ? ["admin", "email", "events", "private"] : ["admin", "private"]) : toset([])
   name                 = "admin-${each.key}"
   path                 = "/energy-demo-aws/"
   permissions_boundary = "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/admin-${each.key}-boundary"
@@ -113,6 +125,7 @@ resource "aws_lambda_function" "admin" {
       USER_ENERGY_TABLE       = aws_dynamodb_table.user_energy.name
       ADMIN_PRIVATE_ROLE_ARN  = aws_iam_role.admin["private"].arn
       } : {}, each.key == "email" ? {
+      ADMIN_EMAIL_TESTING_ENABLED   = tostring(var.admin_email_testing_enabled)
       ADMIN_EMAIL_SENDER            = var.admin_email_sender
       ADMIN_EMAIL_RECIPIENTS        = jsonencode(sort(tolist(var.admin_email_recipients)))
       ADMIN_EMAIL_CONFIGURATION_SET = "${local.name}-admin"
@@ -121,7 +134,7 @@ resource "aws_lambda_function" "admin" {
   depends_on = [aws_cloudwatch_log_group.admin, aws_iam_role_policy.admin]
 }
 resource "aws_apigatewayv2_integration" "admin" {
-  for_each               = var.enable_admin ? toset(["admin", "email"]) : toset([])
+  for_each               = var.enable_admin ? toset(var.admin_email_testing_enabled ? ["admin", "email"] : ["admin"]) : toset([])
   api_id                 = aws_apigatewayv2_api.energy.id
   integration_type       = "AWS_PROXY"
   integration_uri        = aws_lambda_function.admin[each.key].invoke_arn
@@ -148,7 +161,7 @@ resource "aws_lambda_permission" "admin" {
   source_arn     = "${aws_apigatewayv2_api.energy.execution_arn}/*/${each.value.method}${each.value.path}"
 }
 resource "aws_lambda_permission" "admin_events" {
-  count          = var.enable_admin ? 1 : 0
+  count          = var.enable_admin && var.admin_email_testing_enabled ? 1 : 0
   statement_id   = "TrustedSESNotifications"
   action         = "lambda:InvokeFunction"
   function_name  = aws_lambda_function.admin["events"].function_name
@@ -157,7 +170,7 @@ resource "aws_lambda_permission" "admin_events" {
   source_arn     = "arn:aws:sns:${local.region}:${var.account_id}:${local.name}-admin-email"
 }
 resource "aws_sns_topic_subscription" "admin_events" {
-  count      = var.enable_admin ? 1 : 0
+  count      = var.enable_admin && var.admin_email_testing_enabled ? 1 : 0
   topic_arn  = "arn:aws:sns:${local.region}:${var.account_id}:${local.name}-admin-email"
   protocol   = "lambda"
   endpoint   = aws_lambda_function.admin["events"].arn

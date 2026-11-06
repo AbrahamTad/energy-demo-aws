@@ -1,0 +1,109 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "NoSecretValuesOrProvisioning",
+      "Effect": "Deny",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:BatchGetSecretValue",
+        "secretsmanager:CreateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:RotateSecret",
+        "secretsmanager:PutResourcePolicy",
+        "secretsmanager:DeleteResourcePolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoDatabaseRecords",
+      "Effect": "Deny",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PartiQL*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoQueueContents",
+      "Effect": "Deny",
+      "Action": [
+        "sqs:SendMessage",
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:ChangeMessageVisibility",
+        "sqs:PurgeQueue",
+        "sqs:StartMessageMoveTask",
+        "sqs:CancelMessageMoveTask"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoSendingOrRuntimeInvocation",
+      "Effect": "Deny",
+      "Action": [
+        "ses:Send*",
+        "sns:Publish",
+        "lambda:Invoke*",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoIAMAdministration",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicy*",
+        "iam:DeletePolicy*",
+        "iam:SetDefaultPolicyVersion",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:AddRoleToInstanceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoKeyUsageOrAdministration",
+      "Effect": "Deny",
+      "Action": [
+        "kms:Create*",
+        "kms:Put*",
+        "kms:Update*",
+        "kms:Delete*",
+        "kms:Schedule*",
+        "kms:CancelKeyDeletion",
+        "kms:Enable*",
+        "kms:Disable*",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:GenerateDataKey*",
+        "kms:ReEncrypt*",
+        "kms:RevokeGrant",
+        "kms:RetireGrant"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NoMappingCreation",
+      "Effect": "Deny",
+      "Action": [
+        "lambda:CreateEventSourceMapping"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

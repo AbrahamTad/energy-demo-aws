@@ -36,6 +36,8 @@ def update(key, state, message_id=""):
 
 
 def send(event, owner):
+    if os.environ.get("ADMIN_EMAIL_TESTING_ENABLED") != "true":
+        raise ApiError(503, "Admin email testing is disabled.")
     values = payload(event, ["id", "recipient"])
     identifier = record_id(values["id"])
     recipient = values["recipient"]
