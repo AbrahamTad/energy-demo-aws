@@ -196,3 +196,19 @@ run "reject_preprovisioned_wrong_path" {
   }
   expect_failures = [data.aws_iam_role.contact_ci["api"]]
 }
+
+run "runtime_iam_and_configuration_are_operator_only" {
+  command = plan
+  assert {
+    condition     = alltrue(flatten([for p in module.contact_ci_policy.policies : [for st in jsondecode(p).Statement : alltrue([for a in st.Action : !contains(["iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:PassRole", "lambda:CreateFunction", "lambda:UpdateFunctionConfiguration", "lambda:PutFunctionConcurrency", "lambda:AddPermission", "lambda:PutFunctionEventInvokeConfig", "lambda:UpdateFunctionEventInvokeConfig", "lambda:UpdateEventSourceMapping"], a)]) if st.Effect == "Allow"]]))
+    error_message = "Contact CI cannot write runtime IAM or sensitive execution configuration."
+  }
+  assert {
+    condition     = anytrue([for st in jsondecode(module.contact_ci_policy.policies["guard"]).Statement : st.Effect == "Deny" && contains(st.Action, "iam:PutRolePolicy") && contains(st.Action, "iam:PassRole") && toset(flatten([st.Resource])) == toset([for k in ["api", "relay", "worker", "admin", "events"] : "arn:aws:iam::628582070745:role/energy-demo-aws/contact-${k}"])])
+    error_message = "Contact role policy and PassRole denies must be explicit and exactly scoped."
+  }
+  assert {
+    condition     = anytrue([for st in jsondecode(module.contact_ci_policy.policies["write-runtime"]).Statement : st.Effect == "Allow" && contains(st.Action, "lambda:UpdateFunctionCode")])
+    error_message = "Code deployment remains scoped trusted authority, not configuration authority."
+  }
+}

@@ -20,6 +20,14 @@ def expected_ids(environment):
     return result
 
 
+def has_unknown(value):
+    if isinstance(value, dict):
+        return any(has_unknown(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_unknown(v) for v in value)
+    return value is True
+
+
 def verify(plan, ids):
     changes = {r["address"]: r for r in plan.get("resource_changes", [])}
     admin_paths = {"session_get": "GET /api/admin/session", "session_post": "POST /api/admin/session",
@@ -45,6 +53,10 @@ def verify(plan, ids):
                     or after.get("authorizer_id") != authorizer
                     or after.get("authorization_scopes") != ["aws.cognito.signin.user.admin"]):
                 raise ValueError("Unprotected or unapproved admin route: " + address)
+        if address.startswith("aws_iam_role_policy.contact[") and actions != ["no-op"]:
+            raise ValueError("Contact runtime IAM policy writes require an operator plan")
+        if address in {"aws_lambda_event_source_mapping.contact_queue[0]", "aws_lambda_event_source_mapping.contact_stream[0]"} and actions != ["no-op"]:
+            raise ValueError("Contact event-source configuration requires an operator plan")
         contact_kinds = {"api", "relay", "worker", "admin", "events"}
         if address.startswith("aws_iam_role.contact["):
             if actions == ["create"]:
@@ -62,6 +74,19 @@ def verify(plan, ids):
                     or trust != expected_trust):
                 raise ValueError("Contact runtime role must retain its exact boundary and Lambda-only trust")
         if address.startswith("aws_lambda_function.contact["):
+            if actions == ["create"]:
+                raise ValueError("Contact functions require operator provisioning")
+            if actions == ["update"]:
+                before = resource["change"].get("before")
+                if not isinstance(before, dict):
+                    raise ValueError("Missing Contact function configuration baseline")
+                code_or_metadata = {"filename", "source_code_hash", "s3_bucket", "s3_key", "s3_object_version", "image_uri", "code_sha256", "last_modified", "qualified_arn", "qualified_invoke_arn", "version", "signing_job_arn", "signing_profile_version_arn", "tags", "tags_all"}
+                protected = (set(before) | set(after)) - code_or_metadata
+                unknown = resource["change"].get("after_unknown") or {}
+                if (any(before.get(k) != after.get(k) for k in protected)
+                        or not isinstance(unknown, dict)
+                        or any(has_unknown(v) for k, v in unknown.items() if k not in code_or_metadata)):
+                    raise ValueError("Contact sensitive Lambda configuration requires an operator plan")
             name = address.removeprefix('aws_lambda_function.contact["').removesuffix('"]')
             if name not in contact_kinds or after.get("role") != "arn:aws:iam::628582070745:role/energy-demo-aws/contact-" + name:
                 raise ValueError("Contact function must use its intended runtime role")

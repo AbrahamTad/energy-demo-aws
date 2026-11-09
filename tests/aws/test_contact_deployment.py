@@ -57,9 +57,9 @@ class ContactDeploymentTests(unittest.TestCase):
                 self.assertNotEqual(original, gate.configuration())
 
     def test_saved_plan_rejects_enabling_contact_worker_or_unprotecting_admin(self):
-        worker = {"address": 'aws_lambda_function.contact["worker"]', "change": {"actions": ["create"],
+        worker = {"address": 'aws_lambda_function.contact["worker"]', "change": {"actions": ["no-op"],
             "after": {"role": "arn:aws:iam::628582070745:role/energy-demo-aws/contact-worker", "reserved_concurrent_executions": 0, "environment": [{"variables": {"CONTACT_EMAIL_SENDING_ENABLED": "false"}}]}}}
-        queue = {"address": "aws_lambda_event_source_mapping.contact_queue[0]", "change": {"actions": ["create"], "after": {"enabled": False}}}
+        queue = {"address": "aws_lambda_event_source_mapping.contact_queue[0]", "change": {"actions": ["no-op"], "after": {"enabled": False}}}
         plan_guard.verify({"resource_changes": [worker, queue]}, {})
         for resource, key, value in [(worker, "reserved_concurrent_executions", 1), (queue, "enabled", True)]:
             bad = copy.deepcopy(resource); bad["change"]["after"][key] = value

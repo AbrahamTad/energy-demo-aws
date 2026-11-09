@@ -92,8 +92,8 @@ class ContactCIPolicyTests(unittest.TestCase):
             for boundary in [None,own,own+"-unapproved"]:
                 for policies in [self.plan,self.deploy,[*self.deploy,accidental]]:
                     self.assertFalse(allowed(policies,"iam:CreateRole",role,{"iam:PermissionsBoundary":boundary}))
-            self.assertTrue(allowed(self.deploy,"iam:PutRolePolicy",role))
-            self.assertTrue(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":"lambda.amazonaws.com"}))
+            self.assertFalse(allowed(self.deploy,"iam:PutRolePolicy",role))
+            self.assertFalse(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":"lambda.amazonaws.com"}))
             for service in [None,"ec2.amazonaws.com","ecs-tasks.amazonaws.com"]:
                 self.assertFalse(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":service}))
         other=f"arn:aws:iam::{ACCOUNT}:role/energy-demo-bootstrap/github-deploy"
@@ -108,13 +108,13 @@ class ContactCIPolicyTests(unittest.TestCase):
         for k,id in MAPPINGS.items():
             arn=f"arn:aws:lambda:{REGIONAL}:event-source-mapping:{id}"
             expected=FUNCTIONS[1 if k=="stream" else 2]
-            self.assertTrue(allowed(self.deploy,"lambda:UpdateEventSourceMapping",arn,{"lambda:FunctionArn":expected}))
+            self.assertFalse(allowed(self.deploy,"lambda:UpdateEventSourceMapping",arn,{"lambda:FunctionArn":expected}))
             self.assertFalse(allowed(self.deploy,"lambda:UpdateEventSourceMapping",arn,{"lambda:FunctionArn":FUNCTIONS[0]}))
             self.assertFalse(allowed(self.deploy,"lambda:UpdateEventSourceMapping",arn.replace(id,"99999999-9999-4999-8999-999999999999"),{"lambda:FunctionArn":expected}))
 
     def test_services_must_target_contact_functions(self):
         for service in ["apigateway.amazonaws.com","sns.amazonaws.com","events.amazonaws.com"]:
-            self.assertTrue(allowed(self.deploy,"lambda:AddPermission",FUNCTIONS[0],{"lambda:Principal":service}))
+            self.assertFalse(allowed(self.deploy,"lambda:AddPermission",FUNCTIONS[0],{"lambda:Principal":service}))
         self.assertFalse(allowed(self.deploy,"lambda:AddPermission",FUNCTIONS[0],{"lambda:Principal":"*"}))
         ctx={"sns:Protocol":"lambda","sns:Endpoint":FUNCTIONS[4]}
         self.assertTrue(allowed(self.deploy,"sns:Subscribe",self.v["topic_arn"],ctx))
@@ -157,7 +157,48 @@ class ContactCIPolicyTests(unittest.TestCase):
                 ("assume_role_policy",json.dumps({"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sts:AssumeRole","Principal":{"AWS":"*"}}]}))]:
             bad=copy.deepcopy(role);bad["change"]["after"][key]=value
             with self.subTest(key=key),self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[bad]}, {})
-        function={"address": 'aws_lambda_function.contact["api"]',"change":{"actions":["create"],"after":{"role":ROLES[0]}}}
+        function={"address": 'aws_lambda_function.contact["api"]',"change":{"actions":["no-op"],"after":{"role":ROLES[0]}}}
         plan_guard.verify({"resource_changes":[function]}, {})
         function["change"]["after"]["role"]=ROLES[2]
         with self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[function]}, {})
+
+    def test_operator_only_writes_denied_even_with_accidental_allow(self):
+        accidental={"Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}
+        for policies in [self.plan,self.deploy,[accidental,self.p["guard"]]]:
+            for role in ROLES:
+                for action in ["iam:PutRolePolicy","iam:DeleteRolePolicy","iam:PassRole"]:
+                    for service in ["lambda.amazonaws.com","ec2.amazonaws.com"]:
+                        self.assertFalse(allowed(policies,action,role,{"iam:PassedToService":service}))
+            for function in FUNCTIONS:
+                for action in ["lambda:CreateFunction","lambda:UpdateFunctionConfiguration","lambda:PutFunctionConcurrency","lambda:DeleteFunctionConcurrency","lambda:AddPermission","lambda:PutFunctionEventInvokeConfig","lambda:UpdateFunctionEventInvokeConfig"]:
+                    self.assertFalse(allowed(policies,action,function))
+            for mapping in self.v["mapping_arns"]:
+                self.assertFalse(allowed(policies,"lambda:UpdateEventSourceMapping",mapping))
+        # New scoped denies must not silently disable unrelated base deployment rights.
+        unrelated="arn:aws:iam::"+ACCOUNT+":role/energy-demo-aws/lambda-execution"
+        self.assertTrue(allowed([accidental,self.p["guard"]],"iam:PassRole",unrelated))
+
+    def test_code_updates_are_trusted_authority_not_a_data_isolation_boundary(self):
+        from test_deployment import plan_guard
+        import copy
+        self.assertTrue(allowed(self.deploy,"lambda:UpdateFunctionCode",FUNCTIONS[0]))
+        self.assertFalse(allowed(self.deploy,"lambda:UpdateFunctionCode",FUNCTIONS[0]+"-other"))
+        self.assertFalse(allowed(self.plan,"lambda:UpdateFunctionCode",FUNCTIONS[0]))
+        for action,resource in [("secretsmanager:GetSecretValue",self.v["secret_arn"]),("dynamodb:GetItem",self.v["table_arn"])]:
+            self.assertFalse(allowed(self.deploy,action,resource))
+        # The runtime ceiling still permits secret/record reads: caller denies do not transfer.
+        text=(ROOT/"infrastructure/modules/contact-policy/main.tf").read_text()
+        self.assertIn('"secretsmanager:GetSecretValue"',text)
+        self.assertIn('"dynamodb:GetItem"',text)
+        before={"role":ROLES[0],"handler":"contact_api.lambda_handler","environment":[{"variables":{"CONTACT_SECRET_ARN":"metadata-only"}}],"runtime":"python3.12","layers":[],"source_code_hash":"old"}
+        after=copy.deepcopy(before);after["source_code_hash"]="new"
+        resource={"address":'aws_lambda_function.contact["api"]',"change":{"actions":["update"],"before":before,"after":after}}
+        plan_guard.verify({"resource_changes":[resource]}, {})
+        for key,value in [("environment",[]),("role",ROLES[1]),("handler","other.handler"),("runtime","other"),("layers",["unreviewed"])]:
+            bad=copy.deepcopy(resource);bad["change"]["after"][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[bad]}, {})
+        bad=copy.deepcopy(resource);bad["change"]["after_unknown"]={"environment":True}
+        with self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[bad]}, {})
+        for address in ['aws_iam_role_policy.contact["api"]','aws_lambda_event_source_mapping.contact_queue[0]']:
+            bad={"address":address,"change":{"actions":["update"],"after":{}}}
+            with self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[bad]}, {})

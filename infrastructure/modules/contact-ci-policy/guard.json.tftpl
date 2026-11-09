@@ -2,6 +2,24 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "ContactRuntimeIAMOperatorOnly",
+      "Effect": "Deny",
+      "Action": ["iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:PassRole"],
+      "Resource": ${role_arns}
+    },
+    {
+      "Sid": "ContactLambdaConfigurationOperatorOnly",
+      "Effect": "Deny",
+      "Action": ["lambda:CreateFunction", "lambda:UpdateFunctionConfiguration", "lambda:PutFunctionConcurrency", "lambda:DeleteFunctionConcurrency", "lambda:AddPermission", "lambda:RemovePermission", "lambda:PutFunctionEventInvokeConfig", "lambda:UpdateFunctionEventInvokeConfig", "lambda:DeleteFunctionEventInvokeConfig"],
+      "Resource": ${function_arns}
+    },
+    {
+      "Sid": "ContactMappingsOperatorOnly",
+      "Effect": "Deny",
+      "Action": ["lambda:UpdateEventSourceMapping"],
+      "Resource": ${mapping_arns}
+    },
+    {
       "Sid": "NoSecretValuesOrProvisioning",
       "Effect": "Deny",
       "Action": [

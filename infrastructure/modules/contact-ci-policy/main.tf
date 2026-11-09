@@ -20,15 +20,8 @@ locals {
   )
   mapping_arns = [for k in sort(keys(var.mapping_ids)) : "arn:aws:lambda:${local.regional}:event-source-mapping:${var.mapping_ids[k]}"]
   context = {
-    mapping_arns  = jsonencode(local.mapping_arns)
-    function_arns = jsonencode(local.function_arns)
-    mapping_update_statements = join(",", [for k, id in var.mapping_ids : jsonencode({
-      Sid       = "Contact${title(k)}MappingUpdate"
-      Effect    = "Allow"
-      Action    = ["lambda:UpdateEventSourceMapping"]
-      Resource  = "arn:aws:lambda:${local.regional}:event-source-mapping:${id}"
-      Condition = { ArnEquals = { "lambda:FunctionArn" = "arn:aws:lambda:${local.regional}:function:${local.prefix}-${k == "stream" ? "relay" : "worker"}" } }
-    })])
+    mapping_arns      = jsonencode(local.mapping_arns)
+    function_arns     = jsonencode(local.function_arns)
     worker_function   = jsonencode(local.function_arns[2])
     events_function   = jsonencode(local.function_arns[4])
     relay_function    = jsonencode(local.function_arns[1])
