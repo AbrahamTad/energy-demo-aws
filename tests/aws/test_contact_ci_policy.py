@@ -38,9 +38,8 @@ def render():
         "secret_arn": f"arn:aws:secretsmanager:{REGIONAL}:secret:energy-demo/contact-??????", "key_arn": KEY,
         "rule_arn": f"arn:aws:events:{REGIONAL}:rule/{PREFIX}-reconcile",
         "alarm_arns": [f"arn:aws:cloudwatch:{REGIONAL}:alarm:{a}" for a in alarms],
-        "edge_arn": f"arn:aws:cloudfront::{ACCOUNT}:function/{PREFIX}-viewer",
-        "create_statements": [{"Sid": "CreateContact"+k.title(), "Effect": "Allow", "Action": ["iam:CreateRole"], "Resource": r,
-            "Condition": {"StringEquals": {"iam:PermissionsBoundary": f"arn:aws:iam::{ACCOUNT}:policy/energy-demo-bootstrap/contact-{k}-boundary"}}} for k,r in zip(KINDS,ROLES)]}
+        "edge_arn": f"arn:aws:cloudfront::{ACCOUNT}:function/{PREFIX}-viewer"}
+
     context = {k:json.dumps(v) for k,v in values.items()}
     context["mapping_update_statements"] = ",".join(json.dumps(v) for v in updates)
     policies={}
@@ -86,15 +85,20 @@ class ContactCIPolicyTests(unittest.TestCase):
                 ("lambda:GetFunction",FUNCTIONS[0]+"-unapproved"),("kms:DescribeKey",KEY.replace("11111111","99999999"))]:
             self.assertFalse(allowed(self.plan,action,resource))
 
-    def test_create_role_requires_its_own_boundary(self):
+    def test_create_role_denied_even_with_correct_boundary_and_accidental_grant(self):
+        accidental={"Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}
         for k,role in zip(KINDS,ROLES):
             own=f"arn:aws:iam::{ACCOUNT}:policy/energy-demo-bootstrap/contact-{k}-boundary"
-            self.assertTrue(allowed(self.deploy,"iam:CreateRole",role,{"iam:PermissionsBoundary":own}))
-            for boundary in [None,own+"-unapproved",f"arn:aws:iam::{ACCOUNT}:policy/AdministratorAccess"]:
-                self.assertFalse(allowed(self.deploy,"iam:CreateRole",role,{"iam:PermissionsBoundary":boundary}))
+            for boundary in [None,own,own+"-unapproved"]:
+                for policies in [self.plan,self.deploy,[*self.deploy,accidental]]:
+                    self.assertFalse(allowed(policies,"iam:CreateRole",role,{"iam:PermissionsBoundary":boundary}))
+            self.assertTrue(allowed(self.deploy,"iam:PutRolePolicy",role))
             self.assertTrue(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":"lambda.amazonaws.com"}))
-            self.assertFalse(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":"ec2.amazonaws.com"}))
-        self.assertFalse(allowed(self.deploy,"iam:PassRole",f"arn:aws:iam::{ACCOUNT}:role/energy-demo-bootstrap/github-deploy",{"iam:PassedToService":"lambda.amazonaws.com"}))
+            for service in [None,"ec2.amazonaws.com","ecs-tasks.amazonaws.com"]:
+                self.assertFalse(allowed(self.deploy,"iam:PassRole",role,{"iam:PassedToService":service}))
+        other=f"arn:aws:iam::{ACCOUNT}:role/energy-demo-bootstrap/github-deploy"
+        self.assertFalse(allowed(self.deploy,"iam:PassRole",other,{"iam:PassedToService":"lambda.amazonaws.com"}))
+        self.assertFalse(allowed(self.deploy,"iam:PutRolePolicy",other))
 
     def test_deploy_scopes_updates_and_mapping_function_pairs(self):
         for action,resource in [("lambda:UpdateFunctionCode",FUNCTIONS[0]),("dynamodb:UpdateTimeToLive",self.v["table_arn"]),
@@ -121,7 +125,7 @@ class ContactCIPolicyTests(unittest.TestCase):
 
     def test_explicit_denies_win_over_accidental_grants(self):
         accidental={"Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}
-        cases=["secretsmanager:GetSecretValue","secretsmanager:BatchGetSecretValue","secretsmanager:CreateSecret",
+        cases=["iam:CreateRole","iam:PutRolePermissionsBoundary","secretsmanager:GetSecretValue","secretsmanager:BatchGetSecretValue","secretsmanager:CreateSecret",
             "dynamodb:GetItem","dynamodb:Scan","dynamodb:PartiQLSelect","dynamodb:UpdateItem","sqs:ReceiveMessage","sqs:SendMessage",
             "ses:SendEmail","ses:SendRawEmail","ses:SendBulkEmail","sns:Publish","lambda:InvokeFunction","sts:AssumeRole",
             "iam:CreatePolicyVersion","iam:AttachRolePolicy","iam:UpdateAssumeRolePolicy","iam:DeleteRolePermissionsBoundary",
@@ -142,11 +146,13 @@ class ContactCIPolicyTests(unittest.TestCase):
     def test_saved_plan_rejects_runtime_trust_boundary_and_role_escalation(self):
         import copy
         from test_deployment import plan_guard
-        role={"address": 'aws_iam_role.contact["api"]', "change": {"actions": ["create"], "after": {
+        role={"address": 'aws_iam_role.contact["api"]', "change": {"actions": ["no-op"], "after": {
             "name": "contact-api", "path": "/energy-demo-aws/",
             "permissions_boundary": f"arn:aws:iam::{ACCOUNT}:policy/energy-demo-bootstrap/contact-api-boundary",
             "assume_role_policy": json.dumps({"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sts:AssumeRole","Principal":{"Service":"lambda.amazonaws.com"}}]})}}}
         plan_guard.verify({"resource_changes":[role]}, {})
+        creating=copy.deepcopy(role);creating["change"]["actions"]=["create"]
+        with self.assertRaises(ValueError):plan_guard.verify({"resource_changes":[creating]}, {})
         for key,value in [("name","github-deploy"),("path","/energy-demo-bootstrap/"),("permissions_boundary",""),
                 ("assume_role_policy",json.dumps({"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"sts:AssumeRole","Principal":{"AWS":"*"}}]}))]:
             bad=copy.deepcopy(role);bad["change"]["after"][key]=value

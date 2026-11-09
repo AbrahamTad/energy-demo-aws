@@ -37,7 +37,7 @@ run "contact_ci_scoped_draft" {
   command = plan
   variables { enable_admin_ci = true }
   assert {
-    condition     = length(aws_iam_policy.github_contact) == 6 && length(aws_iam_role_policy_attachment.github_contact) == 9 && alltrue([for p in aws_iam_policy.github_contact : length(jsonencode(jsondecode(p.policy))) <= 6144])
+    condition     = length(aws_iam_policy.github_contact) == 5 && length(aws_iam_role_policy_attachment.github_contact) == 8 && alltrue([for p in aws_iam_policy.github_contact : length(jsonencode(jsondecode(p.policy))) <= 6144])
     error_message = "Contact CI policies must be split below IAM size limits with only intended attachments."
   }
   assert {
@@ -45,20 +45,20 @@ run "contact_ci_scoped_draft" {
     error_message = "Contact Plan additions must be metadata reads and explicit denies only."
   }
   assert {
-    condition     = alltrue([for st in jsondecode(module.contact_ci_policy.policies["create"]).Statement : st.Action == ["iam:CreateRole"] && trimsuffix(st.Condition.StringEquals["iam:PermissionsBoundary"], "-boundary") == replace(st.Resource, "role/energy-demo-aws/", "policy/energy-demo-bootstrap/")])
-    error_message = "Each Contact role must require its own exact immutable boundary."
+    condition     = !contains(keys(module.contact_ci_policy.policies), "create") && alltrue(flatten([for p in module.contact_ci_policy.policies : [for st in jsondecode(p).Statement : !contains(st.Action, "iam:CreateRole") if st.Effect == "Allow"]])) && anytrue([for st in jsondecode(module.contact_ci_policy.policies["guard"]).Statement : st.Effect == "Deny" && contains(st.Action, "iam:CreateRole") && contains(st.Action, "iam:DeleteRolePermissionsBoundary") && contains(st.Action, "iam:UpdateAssumeRolePolicy") && st.Resource == "*"])
+    error_message = "CI must never create roles, remove boundaries or modify trust, even with an exact boundary."
   }
   assert {
     condition     = jsondecode(aws_iam_role.github["plan"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AbrahamTad@108827942/energy-demo-aws@1422193057:ref:refs/heads/main" && jsondecode(aws_iam_role.github["deploy"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AbrahamTad@108827942/energy-demo-aws@1422193057:environment:aws-production"
     error_message = "Contact must preserve immutable repository-ID trust and production environment scope."
   }
   assert {
-    condition     = alltrue([for st in jsondecode(module.contact_ci_policy.policies["guard"]).Statement : st.Effect == "Deny"]) && alltrue(flatten([for n in ["read-runtime", "read-delivery", "write-runtime", "write-delivery", "create"] : [for st in jsondecode(module.contact_ci_policy.policies[n]).Statement : st.Resource != "*"]]))
+    condition     = alltrue([for st in jsondecode(module.contact_ci_policy.policies["guard"]).Statement : st.Effect == "Deny"]) && alltrue(flatten([for n in ["read-runtime", "read-delivery", "write-runtime", "write-delivery"] : [for st in jsondecode(module.contact_ci_policy.policies[n]).Statement : st.Resource != "*"]]))
     error_message = "No Contact Allow may use Resource=*; direct data access and escalation must be explicitly denied."
   }
   assert {
-    condition     = length(aws_iam_role_policy_attachment.github_admin) + length(aws_iam_role_policy_attachment.github_contact) == 13
-    error_message = "Existing Admin attachments must be preserved (Deploy 9 managed policies, Plan 4)."
+    condition     = length(aws_iam_role_policy_attachment.github_admin) + length(aws_iam_role_policy_attachment.github_contact) == 12
+    error_message = "Existing Admin attachments must be preserved (Deploy 8 managed policies, Plan 4)."
   }
 }
 run "contact_ci_default_off" {
@@ -103,4 +103,96 @@ run "contact_ci_requires_no_send_boundary" {
   command = plan
   variables { contact_email_sending_enabled = true }
   expect_failures = [aws_iam_policy.github_contact]
+}
+
+override_data {
+  target = data.aws_iam_role.contact_ci["api"]
+  values = {
+    arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-api"
+    path                 = "/energy-demo-aws/"
+    permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-api-boundary"
+    assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+  }
+}
+
+override_data {
+  target = data.aws_iam_role.contact_ci["relay"]
+  values = {
+    arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-relay"
+    path                 = "/energy-demo-aws/"
+    permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-relay-boundary"
+    assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+  }
+}
+
+override_data {
+  target = data.aws_iam_role.contact_ci["worker"]
+  values = {
+    arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-worker"
+    path                 = "/energy-demo-aws/"
+    permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-worker-boundary"
+    assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+  }
+}
+
+override_data {
+  target = data.aws_iam_role.contact_ci["admin"]
+  values = {
+    arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-admin"
+    path                 = "/energy-demo-aws/"
+    permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-admin-boundary"
+    assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+  }
+}
+
+override_data {
+  target = data.aws_iam_role.contact_ci["events"]
+  values = {
+    arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-events"
+    path                 = "/energy-demo-aws/"
+    permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-events-boundary"
+    assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+  }
+}
+
+run "reject_preprovisioned_attacker_trust" {
+  command = plan
+  override_data {
+    target = data.aws_iam_role.contact_ci["api"]
+    values = {
+      arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-api"
+      path                 = "/energy-demo-aws/"
+      permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-api-boundary"
+      assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"AWS\":\"*\"}}]}"
+    }
+  }
+  expect_failures = [data.aws_iam_role.contact_ci["api"]]
+}
+
+run "reject_preprovisioned_wrong_boundary" {
+  command = plan
+  override_data {
+    target = data.aws_iam_role.contact_ci["api"]
+    values = {
+      arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-api"
+      path                 = "/energy-demo-aws/"
+      permissions_boundary = "arn:aws:iam::628582070745:policy/AdministratorAccess"
+      assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+    }
+  }
+  expect_failures = [data.aws_iam_role.contact_ci["api"]]
+}
+
+run "reject_preprovisioned_wrong_path" {
+  command = plan
+  override_data {
+    target = data.aws_iam_role.contact_ci["api"]
+    values = {
+      arn                  = "arn:aws:iam::628582070745:role/energy-demo-aws/contact-api"
+      path                 = "/unrelated/"
+      permissions_boundary = "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-api-boundary"
+      assume_role_policy   = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRole\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}]}"
+    }
+  }
+  expect_failures = [data.aws_iam_role.contact_ci["api"]]
 }

@@ -45,17 +45,9 @@ locals {
     rule_arn          = jsonencode("arn:aws:events:${local.regional}:rule/${local.prefix}-reconcile")
     alarm_arns        = jsonencode([for n in local.alarm_names : "arn:aws:cloudwatch:${local.regional}:alarm:${n}"])
     edge_arn          = jsonencode("arn:aws:cloudfront::${var.account_id}:function/${local.prefix}-viewer")
-    create_statements = jsonencode([for k in local.kinds : {
-      Sid      = "CreateContact${title(k)}"
-      Effect   = "Allow"
-      Action   = ["iam:CreateRole"]
-      Resource = "arn:aws:iam::${var.account_id}:role/energy-demo-aws/contact-${k}"
-      Condition = { StringEquals = {
-        "iam:PermissionsBoundary" = "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/contact-${k}-boundary"
-      } }
-    }])
+
   }
-  policies = { for name in ["read-runtime", "read-delivery", "write-runtime", "write-delivery", "create", "guard"] :
+  policies = { for name in ["read-runtime", "read-delivery", "write-runtime", "write-delivery", "guard"] :
     name => templatefile("${path.module}/${name}.json.tftpl", local.context)
   }
 }

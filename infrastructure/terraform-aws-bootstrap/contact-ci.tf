@@ -29,11 +29,28 @@ module "contact_ci_policy" {
   key_arn     = var.contact_ci_key_arn
   mapping_ids = var.contact_ci_mapping_ids
 }
+# CI cannot create or repair runtime roles. An operator must provision these
+# through the reviewed application configuration before granting any Contact CI.
+data "aws_iam_role" "contact_ci" {
+  for_each = var.enable_contact_ci ? toset(["api", "relay", "worker", "admin", "events"]) : toset([])
+  name     = "contact-${each.key}"
+  lifecycle {
+    postcondition {
+      condition = self.arn == "arn:aws:iam::${var.account_id}:role/energy-demo-aws/contact-${each.key}" && self.path == "/energy-demo-aws/" && self.permissions_boundary == "arn:aws:iam::${var.account_id}:policy/energy-demo-bootstrap/contact-${each.key}-boundary" && jsondecode(self.assume_role_policy) == {
+        Version   = "2012-10-17"
+        Statement = [{ Effect = "Allow", Action = "sts:AssumeRole", Principal = { Service = "lambda.amazonaws.com" } }]
+      }
+      error_message = "Operator-preprovisioned Contact roles must have the exact ARN, boundary and Lambda-only trust before CI is enabled."
+    }
+  }
+}
+
 resource "aws_iam_policy" "github_contact" {
-  for_each = var.enable_contact_ci ? module.contact_ci_policy.policies : {}
-  name     = "energy-demo-contact-ci-${each.key}"
-  path     = "/energy-demo-bootstrap/"
-  policy   = each.value
+  depends_on = [data.aws_iam_role.contact_ci]
+  for_each   = var.enable_contact_ci ? module.contact_ci_policy.policies : {}
+  name       = "energy-demo-contact-ci-${each.key}"
+  path       = "/energy-demo-bootstrap/"
+  policy     = each.value
   lifecycle {
     precondition {
       condition     = var.account_id == "628582070745" && var.enable_contact && var.enable_admin && !var.contact_email_sending_enabled && var.deployment_resource_ids != null

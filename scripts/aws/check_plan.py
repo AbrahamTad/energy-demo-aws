@@ -47,6 +47,8 @@ def verify(plan, ids):
                 raise ValueError("Unprotected or unapproved admin route: " + address)
         contact_kinds = {"api", "relay", "worker", "admin", "events"}
         if address.startswith("aws_iam_role.contact["):
+            if actions == ["create"]:
+                raise ValueError("Contact CI requires operator-preprovisioned runtime roles")
             name = address.removeprefix('aws_iam_role.contact["').removesuffix('"]')
             expected_trust = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
                 "Action": "sts:AssumeRole", "Principal": {"Service": "lambda.amazonaws.com"}}]}
