@@ -142,7 +142,7 @@ def context(workflow):
 def configuration():
     values = {key: value for key, value in os.environ.items()
               if key.startswith("TF_VAR_") or key in {"AWS_REGION", "AWS_DEFAULT_REGION", "AWS_API_ID",
-                  "AWS_CLOUDFRONT_DISTRIBUTION_ID", "AWS_CLOUDFRONT_OAC_ID"}}
+                  "AWS_CLOUDFRONT_DISTRIBUTION_ID", "AWS_CLOUDFRONT_OAC_ID", "VITE_TURNSTILE_SITE_KEY"}}
     patterns = {"TF_VAR_account_id": r"[0-9]{12}", "TF_VAR_budget_email": r"[^@\s]+@[^@\s]+\.[^@\s]+",
         "AWS_API_ID": r"[a-z0-9]{1,32}", "AWS_CLOUDFRONT_DISTRIBUTION_ID": r"[A-Z0-9]{1,64}",
         "AWS_CLOUDFRONT_OAC_ID": r"[A-Z0-9]{1,64}"}
@@ -151,6 +151,28 @@ def configuration():
     if (values["TF_VAR_account_id"] == "000000000000" or values.get("AWS_REGION") != "eu-north-1"
             or values.get("AWS_DEFAULT_REGION") != "eu-north-1"):
         raise ValueError("Incorrect AWS account/region configuration")
+    if values.get("TF_VAR_enable_contact", "false") not in ["true", "false"]:
+        raise ValueError("Invalid Contact enable flag")
+    if values.get("TF_VAR_admin_email_testing_enabled", "false") != "false":
+        raise ValueError("Admin email testing is disabled for the reviewed no-send deployment workflow")
+    if values.get("TF_VAR_enable_contact") == "true":
+        origin = values.get("TF_VAR_contact_site_origin", "")
+        hostnames = json.loads(values.get("TF_VAR_contact_hostnames", "[]"))
+        key = values.get("VITE_TURNSTILE_SITE_KEY", "")
+        if (not re.fullmatch(r"https://[a-z0-9-]+\.cloudfront\.net", origin)
+                or hostnames != [origin.removeprefix("https://")]
+                or not re.fullmatch(r"[a-f0-9]{64}", values.get("TF_VAR_contact_origin_token", ""))
+                or not re.fullmatch(r"[A-Za-z0-9_-]{20,100}", key) or key.startswith(("1x", "2x", "3x"))
+                or values.get("TF_VAR_enable_admin") != "true"
+                or not re.fullmatch(r"arn:aws:sns:eu-north-1:" + values["TF_VAR_account_id"] + r":[A-Za-z0-9_-]+",
+                    values.get("TF_VAR_contact_alarm_topic_arn", ""))):
+            raise ValueError("Contact origin, widget, alarm destination or credential is unapproved")
+        for name in ["contact_sender", "contact_admin_email"]:
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", values.get("TF_VAR_" + name, "")):
+                raise ValueError("Missing Contact sender/inbox")
+        for name in ["contact_email_sending_enabled", "contact_customer_email_enabled"]:
+            if values.get("TF_VAR_" + name, "false") != "false":
+                raise ValueError("Contact readiness rollout is no-send; sending needs a separately reviewed gate change")
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 

@@ -1,0 +1,90 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ContactQueues",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:GetQueueUrl",
+        "sqs:GetQueueAttributes",
+        "sqs:ListQueueTags"
+      ],
+      "Resource": ${queue_arns}
+    },
+    {
+      "Sid": "ContactEventTopic",
+      "Effect": "Allow",
+      "Action": [
+        "sns:GetTopicAttributes",
+        "sns:ListTagsForResource"
+      ],
+      "Resource": ${topic_arn}
+    },
+    {
+      "Sid": "ContactEventSubscription",
+      "Effect": "Allow",
+      "Action": [
+        "sns:GetSubscriptionAttributes"
+      ],
+      "Resource": ${subscription_arn}
+    },
+    {
+      "Sid": "ContactConfiguration",
+      "Effect": "Allow",
+      "Action": [
+        "ses:GetConfigurationSet",
+        "ses:GetConfigurationSetEventDestinations",
+        "ses:ListTagsForResource"
+      ],
+      "Resource": ${configuration_arn}
+    },
+    {
+      "Sid": "ContactSecretMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": ${secret_arn}
+    },
+    {
+      "Sid": "ContactKeyMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "kms:DescribeKey",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:ListResourceTags"
+      ],
+      "Resource": ${key_arn}
+    },
+    {
+      "Sid": "ContactReconciliation",
+      "Effect": "Allow",
+      "Action": [
+        "events:DescribeRule",
+        "events:ListTargetsByRule",
+        "events:ListTagsForResource"
+      ],
+      "Resource": ${rule_arn}
+    },
+    {
+      "Sid": "ContactAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "Resource": ${alarm_arns}
+    },
+    {
+      "Sid": "ContactViewerFunction",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:DescribeFunction",
+        "cloudfront:GetFunction",
+        "cloudfront:ListTagsForResource"
+      ],
+      "Resource": ${edge_arn}
+    }
+  ]
+}

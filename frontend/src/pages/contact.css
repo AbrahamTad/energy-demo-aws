@@ -1,0 +1,5 @@
+.contact-panel { max-width: 48rem; margin: 0 auto; }
+.contact-panel textarea { width: 100%; box-sizing: border-box; font: inherit; padding: .8rem; border: 1px solid var(--border, #999); border-radius: .5rem; color: inherit; background: transparent; resize: vertical; }
+.contact-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.contact-message-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.contact-message-list { display: flex; flex-direction: column; gap: .75rem; }

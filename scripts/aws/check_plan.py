@@ -20,6 +20,14 @@ def expected_ids(environment):
     return result
 
 
+def has_unknown(value):
+    if isinstance(value, dict):
+        return any(has_unknown(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_unknown(v) for v in value)
+    return value is True
+
+
 def verify(plan, ids):
     changes = {r["address"]: r for r in plan.get("resource_changes", [])}
     admin_paths = {"session_get": "GET /api/admin/session", "session_post": "POST /api/admin/session",
@@ -33,6 +41,10 @@ def verify(plan, ids):
         ):
             raise ValueError("Destructive or unsupported plan action: " + address)
         after = resource["change"].get("after") or {}
+        if (address in {'aws_lambda_function.admin["email"]', 'aws_lambda_function.admin["events"]',
+                        'aws_iam_role.admin["email"]', 'aws_iam_role.admin["events"]',
+                        'aws_apigatewayv2_route.admin["email_get"]', 'aws_apigatewayv2_route.admin["email_post"]'}):
+            raise ValueError("Admin email-test execution is excluded from this no-send deployment")
         if address.startswith("aws_apigatewayv2_route.admin["):
             name = address.removeprefix("aws_apigatewayv2_route.admin[").removesuffix("]").strip('"')
             authorizer = changes.get("aws_apigatewayv2_authorizer.users", {}).get("change", {}).get("after", {}).get("id")
@@ -41,18 +53,78 @@ def verify(plan, ids):
                     or after.get("authorizer_id") != authorizer
                     or after.get("authorization_scopes") != ["aws.cognito.signin.user.admin"]):
                 raise ValueError("Unprotected or unapproved admin route: " + address)
+        if address.startswith("aws_iam_role_policy.contact[") and actions != ["no-op"]:
+            raise ValueError("Contact runtime IAM policy writes require an operator plan")
+        if address in {"aws_lambda_event_source_mapping.contact_queue[0]", "aws_lambda_event_source_mapping.contact_stream[0]"} and actions != ["no-op"]:
+            raise ValueError("Contact event-source configuration requires an operator plan")
+        contact_kinds = {"api", "relay", "worker", "admin", "events"}
+        if address.startswith("aws_iam_role.contact["):
+            if actions == ["create"]:
+                raise ValueError("Contact CI requires operator-preprovisioned runtime roles")
+            name = address.removeprefix('aws_iam_role.contact["').removesuffix('"]')
+            expected_trust = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
+                "Action": "sts:AssumeRole", "Principal": {"Service": "lambda.amazonaws.com"}}]}
+            try:
+                trust = json.loads(after.get("assume_role_policy", ""))
+            except (TypeError, ValueError):
+                raise ValueError("Unverifiable Contact runtime trust") from None
+            if (name not in contact_kinds or after.get("name") != "contact-" + name
+                    or after.get("path") != "/energy-demo-aws/"
+                    or after.get("permissions_boundary") != "arn:aws:iam::628582070745:policy/energy-demo-bootstrap/contact-" + name + "-boundary"
+                    or trust != expected_trust):
+                raise ValueError("Contact runtime role must retain its exact boundary and Lambda-only trust")
+        if address.startswith("aws_lambda_function.contact["):
+            if actions == ["create"]:
+                raise ValueError("Contact functions require operator provisioning")
+            if actions == ["update"]:
+                before = resource["change"].get("before")
+                if not isinstance(before, dict):
+                    raise ValueError("Missing Contact function configuration baseline")
+                code_or_metadata = {"filename", "source_code_hash", "s3_bucket", "s3_key", "s3_object_version", "image_uri", "code_sha256", "last_modified", "qualified_arn", "qualified_invoke_arn", "version", "signing_job_arn", "signing_profile_version_arn", "tags", "tags_all"}
+                protected = (set(before) | set(after)) - code_or_metadata
+                unknown = resource["change"].get("after_unknown") or {}
+                if (any(before.get(k) != after.get(k) for k in protected)
+                        or not isinstance(unknown, dict)
+                        or any(has_unknown(v) for k, v in unknown.items() if k not in code_or_metadata)):
+                    raise ValueError("Contact sensitive Lambda configuration requires an operator plan")
+            name = address.removeprefix('aws_lambda_function.contact["').removesuffix('"]')
+            if name not in contact_kinds or after.get("role") != "arn:aws:iam::628582070745:role/energy-demo-aws/contact-" + name:
+                raise ValueError("Contact function must use its intended runtime role")
+        if address.startswith("aws_apigatewayv2_route.contact["):
+            name = address.split('["', 1)[1].split('"', 1)[0]
+            routes = {"submit": "POST /api/contact", "list": "GET /api/admin/messages",
+                      "detail": "GET /api/admin/messages/{id}", "status": "POST /api/admin/messages/{id}/status"}
+            authorizer = changes.get("aws_apigatewayv2_authorizer.users", {}).get("change", {}).get("after", {}).get("id")
+            public = name == "submit"
+            if (name not in routes or after.get("route_key") != routes[name]
+                    or after.get("authorization_type") != ("NONE" if public else "JWT")
+                    or (not public and (not authorizer or after.get("authorizer_id") != authorizer
+                        or after.get("authorization_scopes") != ["aws.cognito.signin.user.admin"]))):
+                raise ValueError("Unprotected or unapproved Contact route")
+        if address == 'aws_lambda_function.contact["worker"]':
+            env = (after.get("environment") or [{}])[0].get("variables", {})
+            if after.get("reserved_concurrent_executions") != 0 or env.get("CONTACT_EMAIL_SENDING_ENABLED") != "false":
+                raise ValueError("Contact readiness worker must remain disabled")
+        if address == "aws_lambda_event_source_mapping.contact_queue[0]" and after.get("enabled") is not False:
+            raise ValueError("Contact readiness queue consumer must remain disabled")
         if resource.get("type") == "aws_dynamodb_table":
             expected_tables = {"aws_dynamodb_table.public_energy": "energy-demo-aws-public-energy",
                                "aws_dynamodb_table.user_energy": "energy-demo-aws-user-energy",
-                               "aws_dynamodb_table.admin_control[0]": "energy-demo-aws-admin-control"}
+                               "aws_dynamodb_table.admin_control[0]": "energy-demo-aws-admin-control",
+                               "aws_dynamodb_table.contact[0]": "energy-demo-aws-contact"}
             after = resource["change"].get("after") or {}
             if (address not in expected_tables or after.get("name") != expected_tables[address]
                     or after.get("billing_mode") != "PAY_PER_REQUEST" or after.get("deletion_protection_enabled") is not True
                     or not (after.get("server_side_encryption") or [{}])[0].get("enabled")
                     or not (after.get("point_in_time_recovery") or [{}])[0].get("enabled")
                     or (after.get("on_demand_throughput") or [{}])[0] != {"max_read_request_units": 10,
-                        "max_write_request_units": 10 if address == "aws_dynamodb_table.admin_control[0]" else 5}):
+                        "max_write_request_units": 10 if address in ["aws_dynamodb_table.admin_control[0]", "aws_dynamodb_table.contact[0]"] else 5}):
                 raise ValueError("Unapproved or unprotected DynamoDB table: " + address)
+            if address == "aws_dynamodb_table.contact[0]" and (after.get("hash_key") != "pk"
+                    or after.get("range_key") != "sk" or after.get("stream_view_type") != "KEYS_ONLY"
+                    or after.get("stream_enabled") is not True
+                    or (after.get("ttl") or [{}])[0] != {"enabled": True, "attribute_name": "expires"}):
+                raise ValueError("Contact requires reviewed keys, TTL and keys-only stream")
             if address == "aws_dynamodb_table.admin_control[0]" and (after.get("hash_key") != "pk"
                     or not (after.get("ttl") or [{}])[0].get("enabled")
                     or (after.get("ttl") or [{}])[0].get("attribute_name") != "expires"):

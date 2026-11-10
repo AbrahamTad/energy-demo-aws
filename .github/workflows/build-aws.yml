@@ -16,6 +16,7 @@ jobs:
       AWS_EC2_METADATA_DISABLED: 'true'
       CHECKPOINT_DISABLE: '1'
       PYTHONDONTWRITEBYTECODE: '1'
+      VITE_TURNSTILE_SITE_KEY: ${{ vars.CONTACT_TURNSTILE_SITE_KEY }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -55,7 +56,7 @@ jobs:
           terraform_wrapper: false
       - name: Validate AWS configurations without credentials or backend access
         run: |
-          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth infrastructure/modules/admin-policy
+          terraform fmt -check -recursive infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth infrastructure/modules/admin-policy infrastructure/modules/contact-policy infrastructure/modules/contact-ci-policy
           for directory in infrastructure/terraform-aws infrastructure/terraform-aws-bootstrap infrastructure/terraform-aws-auth; do
             terraform -chdir="$directory" init -backend=false -input=false -lockfile=readonly
             terraform -chdir="$directory" validate

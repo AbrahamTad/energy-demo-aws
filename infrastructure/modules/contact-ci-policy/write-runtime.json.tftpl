@@ -1,0 +1,63 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ContactFunctionUpdates",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:UpdateFunctionCode",
+        "lambda:TagResource",
+        "lambda:UntagResource"
+      ],
+      "Resource": ${function_arns}
+    },
+    {
+      "Sid": "ContactMappingTags",
+      "Effect": "Allow",
+      "Action": ["lambda:TagResource", "lambda:UntagResource"],
+      "Resource": ${mapping_arns}
+    },
+    {
+      "Sid": "ContactRoleTags",
+      "Effect": "Allow",
+      "Action": [
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Resource": ${role_arns}
+    },
+    {
+      "Sid": "ContactTableSettings",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:UpdateTable",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:UpdateContinuousBackups",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource"
+      ],
+      "Resource": ${table_arn}
+    },
+    {
+      "Sid": "ContactLogRetention",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagLogGroup",
+        "logs:UntagLogGroup"
+      ],
+      "Resource": ${log_stream_arns}
+    },
+    {
+      "Sid": "ContactLogTags",
+      "Effect": "Allow",
+      "Action": [
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": ${log_group_arns}
+    }
+  ]
+}

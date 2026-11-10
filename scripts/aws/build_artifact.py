@@ -11,6 +11,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_FILES = ["handler.py", "user_handler.py", "energy_auth.py", "energy_store.py", "energy_validation.py",
+             "contact_common.py", "contact_api.py", "contact_jobs.py", "contact_admin.py", "contact_events.py",
              "admin_common.py", "admin_handler.py", "admin_email.py", "admin_events.py"]
 
 
@@ -51,7 +52,8 @@ def main():
     files = [output / "lambda.zip", *sorted(frontend.rglob("*"))]
     hashes = {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in files if p.is_file()}
-    (output / "manifest.json").write_text(json.dumps({"commit": sha, "sha256": hashes}, indent=2) + "\n")
+    (output / "manifest.json").write_text(json.dumps({"commit": sha, "sha256": hashes,
+        "contact_site_key_sha256": hashlib.sha256(os.environ.get("VITE_TURNSTILE_SITE_KEY", "").encode()).hexdigest()}, indent=2) + "\n")
     print(f"Packaged energy Lambda handlers and {len(hashes) - 1} frontend files for commit {sha}.")
 
 

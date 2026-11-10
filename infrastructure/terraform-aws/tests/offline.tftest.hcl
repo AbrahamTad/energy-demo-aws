@@ -47,10 +47,11 @@ run "admin_is_opt_in" {
 run "admin_security_and_cost_boundaries" {
   command = plan
   variables {
-    enable_admin            = true
-    admin_cognito_client_id = "adminfixtureclient"
-    admin_email_sender      = "sender@example.invalid"
-    admin_email_recipients  = ["test@example.invalid"]
+    admin_email_testing_enabled = true
+    enable_admin                = true
+    admin_cognito_client_id     = "adminfixtureclient"
+    admin_email_sender          = "sender@example.invalid"
+    admin_email_recipients      = ["test@example.invalid"]
   }
   assert {
     condition     = length(aws_apigatewayv2_route.admin) == 8 && alltrue([for route in aws_apigatewayv2_route.admin : route.authorization_type == "JWT" && route.authorizer_id == aws_apigatewayv2_authorizer.users.id && route.authorization_scopes == toset(["aws.cognito.signin.user.admin"])])
@@ -186,4 +187,25 @@ run "database_and_private_routes" {
     )
     error_message = "Keep isolated environments/boundaries and forward authenticated writes without enabling API caching."
   }
+}
+
+run "admin_no_send_prerequisites_without_ses_inputs" {
+  command = plan
+  variables {
+    enable_admin            = true
+    admin_cognito_client_id = "fixtureadminclient"
+  }
+  assert {
+    condition     = toset(keys(aws_lambda_function.admin)) == toset(["admin"]) && toset(keys(aws_iam_role.admin)) == toset(["admin", "private"]) && toset(keys(aws_apigatewayv2_integration.admin)) == toset(["admin"]) && length(aws_apigatewayv2_route.admin) == 6 && length(aws_lambda_permission.admin_events) == 0 && length(aws_sns_topic_subscription.admin_events) == 0
+    error_message = "No-send Admin must omit email/events functions, roles, integrations, routes and subscriptions."
+  }
+  assert {
+    condition     = alltrue([for route in aws_apigatewayv2_route.admin : route.authorization_type == "JWT" && route.authorizer_id == aws_apigatewayv2_authorizer.users.id && route.authorization_scopes == toset(["aws.cognito.signin.user.admin"])]) && alltrue([for policy in aws_iam_role_policy.admin : anytrue([for s in jsondecode(policy.policy).Statement : s.Effect == "Deny" && contains(s.Action, "ses:SendEmail") && contains(s.Action, "ses:SendRawEmail") && s.Resource == "*"])])
+    error_message = "No-send must preserve JWT protection and deny sending on all remaining Admin roles."
+  }
+}
+run "email_flag_requires_admin" {
+  command = plan
+  variables { admin_email_testing_enabled = true }
+  expect_failures = [var.admin_email_testing_enabled]
 }

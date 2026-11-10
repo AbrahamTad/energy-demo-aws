@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
                   attrs: {
                     "http-equiv": "Content-Security-Policy",
                     content:
-                      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cognito-idp.eu-north-1.amazonaws.com; object-src 'none'; base-uri 'self'; form-action 'self'",
+                      "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://cognito-idp.eu-north-1.amazonaws.com https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'",
                   },
                   injectTo: "head-prepend",
                 },
