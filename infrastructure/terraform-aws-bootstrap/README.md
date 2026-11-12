@@ -104,6 +104,59 @@ Bootstrap-state migration to a separate protected S3 key is a later administrato
 operation with its own reviewed backend change; do not manually upload a stale
 state file or mix it with application state.
 
+## Read-only preflight for an existing bootstrap
+
+Historical deployment notes above are not evidence of current ownership or drift.
+Before preparing another bootstrap plan:
+
+1. Use the operator-selected authenticated AWS profile. Verify STS account and
+   caller against the approved EnergyDemo account; explicitly select `eu-north-1`.
+   An expired session must be reauthenticated by the operator. Never print
+   credentials, authentication-cache contents or secret values.
+2. Establish the authoritative bootstrap backend and state with its owner. The
+   checked-in backend resolves to this worktree's
+   `.local/terraform-aws-bootstrap.tfstate`; absence of that file does not mean
+   bootstrap resources are absent. Stop rather than initialize an empty state,
+   copy another worktree's state, migrate a backend or use the application's S3
+   state as bootstrap state. Inspect only necessary state metadata and resource
+   addresses privately; do not print or commit state contents.
+3. Coordinate with every bootstrap/application writer and obtain an explicit
+   no-write window. Check running and queued GitHub Plan/Apply workflows. Their
+   `energy-demo-real-aws` concurrency group does not coordinate local Terraform
+   processes or other administrator sessions. An idle Actions queue or absent
+   lock alone does not establish exclusive access. Do not create, remove or
+   force-unlock locks during this preflight.
+4. Use scoped read-only IAM inspection to verify the five policies
+   `/energy-demo-bootstrap/contact-{api,relay,worker,admin,events}-boundary`.
+   Compare default policy versions with the reviewed Contact policy module,
+   including the intended sending gate. Verify exact account, path, ownership,
+   attachment consumers and resource scopes; policy existence alone is not a
+   policy-content or drift check. Do not read Contact messages or secret values.
+5. Inventory `/energy-demo-bootstrap/admin-admin-boundary` and
+   `/energy-demo-bootstrap/admin-private-boundary`. These are the two Admin
+   boundaries selected by `enable_admin=true` with
+   `admin_email_testing_enabled=false`. The `admin-email-boundary` and
+   `admin-events-boundary` policies belong to the separately approved email-test
+   mode. Record each observed presence/absence; do not infer it from source or
+   assume a missing policy is safe to create without resolving state ownership.
+6. Validate Terraform in an isolated source copy with backend access disabled,
+   following the offline validation instructions in
+   [ADMIN.md](../terraform-aws/ADMIN.md#offline-validation). Do not initialize the
+   live backend merely to validate source. This does not establish live drift.
+7. Only after account, authoritative state, inputs, ownership and the no-write
+   window are verified, prepare a normal refresh-enabled saved plan with
+   `-input=false -lock=false`. Keep the plan and its JSON inspection private in
+   an ignored directory. Do not run refresh-only apply, state commands that
+   mutate state, imports, backend migration or Apply. Review every resource's
+   before/after actions, refresh drift, data reads and output changes. Report the
+   actual add/change/destroy counts and all replacements; never assume
+   `2 adds / 0 changes / 0 destroys`. Stop if a resource is already owned by a
+   different state or any prerequisite is uncertain.
+
+Keep Contact sending, Admin email testing, CI activation and identity/membership
+gates at their separately approved settings. Karl's Admin membership remains
+ON HOLD. A reviewed plan grants no permission to apply it or activate production.
+
 Order: review files and IAM → confirm account/OIDC/quotas/billing/solo-owner controls →
 approve administrator bootstrap plan (null resource IDs) → create bootstrap →
 independently review/approve an initial administrator application plan → create
