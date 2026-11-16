@@ -85,7 +85,10 @@ def status():
         "public_database": lambda: client("dynamodb").describe_table(TableName=os.environ["PUBLIC_ENERGY_TABLE"])["Table"]["TableStatus"],
         "admin_database": lambda: client("dynamodb").describe_table(TableName=control())["Table"]["TableStatus"],
         "cognito": lambda: client("cognito-idp").describe_user_pool(UserPoolId=os.environ["COGNITO_USER_POOL_ID"])["UserPool"].get("Status", "available"),
-        "email": lambda: "enabled" if client("sesv2").get_account().get("SendingEnabled") else "disabled",
+        "email": lambda: "enabled" if (
+            os.environ.get("ADMIN_EMAIL_TESTING_ENABLED") == "true"
+            and client("sesv2").get_account().get("SendingEnabled") is True
+        ) else "disabled",
     }.items():
         try:
             checks[name] = action()

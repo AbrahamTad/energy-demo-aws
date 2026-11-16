@@ -109,6 +109,10 @@ bootstrap preparation does not enable the application. Keep
 
 The behavior below applies only to separately enabled Admin email testing.
 No-send mode retains explicit SES sending denies on its policies and boundaries.
+The Admin status endpoint reports email disabled without querying SES when the
+application email-test gate is off. With that gate on, it reports enabled only
+for an explicit account `SendingEnabled=true`; SES inspection failures report
+unavailable. This status does not verify recipients or authorize a send.
 
 For email testing, the operator selects a fixed sender and 1–5 SES-verified recipient
 addresses in Stockholm. The backend checks verification at send time. Both its
