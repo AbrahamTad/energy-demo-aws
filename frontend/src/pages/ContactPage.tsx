@@ -102,11 +102,11 @@ export function ContactPage() {
     {!configured && <p role="alert">Contact submissions are not configured yet.</p>}
     {reference && <p role="status">Your inquiry was saved. Reference: {reference}. A confirmation email may arrive separately.</p>}
     <form className="form" onSubmit={submit}>
-      <Field label="Name" name="name" autoComplete="name" required maxLength={100} />
-      <Field label="Email" name="email" type="email" autoComplete="email" required maxLength={254} />
-      <Field label="Subject" name="subject" required maxLength={150} />
+      <Field label="Name" name="name" autoComplete="name" required maxLength={100} disabled={busy} />
+      <Field label="Email" name="email" type="email" autoComplete="email" required maxLength={254} disabled={busy} />
+      <Field label="Subject" name="subject" required maxLength={150} disabled={busy} />
       <div className="field"><label htmlFor="contact-message">Message</label>
-        <textarea id="contact-message" name="message" required maxLength={5000} rows={7} /></div>
+        <textarea id="contact-message" name="message" required maxLength={5000} rows={7} disabled={busy} /></div>
       <div className="contact-honeypot" aria-hidden="true"><label>Leave blank<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
       <div ref={widget} aria-label="Bot protection" />
       {botError && <><p role="alert">{botError}</p>

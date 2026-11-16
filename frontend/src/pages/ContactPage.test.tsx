@@ -110,13 +110,15 @@ describe("Contact form", () => {
     expect(screen.getByRole("button", { name: "Send inquiry" })).toBeDisabled();
     expect(window.turnstile?.reset).toHaveBeenCalledWith("widget");
   });
-  it("blocks duplicate clicks while a request is pending", async () => {
+  it("locks submitted fields and blocks duplicate clicks until the receipt arrives", async () => {
     let finish!: (response: Response) => void;
     vi.mocked(fetch).mockReturnValue(new Promise<Response>((resolve) => { finish = resolve; }));
     await fill();
     const button = screen.getByRole("button", { name: "Send inquiry" });
     fireEvent.click(button);
     expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    for (const label of ["Name", "Email", "Subject", "Message"])
+      expect(screen.getByLabelText(label)).toBeDisabled();
     fireEvent.click(button);
     expect(fetch).toHaveBeenCalledTimes(1);
     const sent = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
@@ -126,6 +128,8 @@ describe("Contact form", () => {
     finish({ ok: true, json: async () => ({ id: sent.id, status: "saved" }) } as Response);
     expect(await screen.findByRole("status")).toHaveTextContent(sent.id);
     expect(screen.getByLabelText("Message")).toHaveValue("");
+    for (const label of ["Name", "Email", "Subject", "Message"])
+      expect(screen.getByLabelText(label)).toBeEnabled();
   });
   it("rejects an inconsistent receipt and retains the reference for retry", async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ id: "wrong-reference", status: "saved" }) } as Response);
@@ -148,6 +152,8 @@ describe("Contact form", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Message")).toHaveValue("Hello");
+    for (const label of ["Name", "Email", "Subject", "Message"])
+      expect(screen.getByLabelText(label)).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send inquiry" })).toBeDisabled();
   });
   it("reports saved inquiry without promising email delivery", async () => {
