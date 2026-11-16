@@ -54,6 +54,10 @@ run "admin_security_and_cost_boundaries" {
     admin_email_recipients      = ["test@example.invalid"]
   }
   assert {
+    condition     = output.admin_email_testing_enabled && aws_lambda_function.admin["admin"].environment[0].variables.ADMIN_EMAIL_TESTING_ENABLED == "true" && aws_lambda_function.admin["email"].environment[0].variables.ADMIN_EMAIL_TESTING_ENABLED == "true"
+    error_message = "Admin status and email handlers must receive the same explicitly approved email-test gate."
+  }
+  assert {
     condition     = length(aws_apigatewayv2_route.admin) == 8 && alltrue([for route in aws_apigatewayv2_route.admin : route.authorization_type == "JWT" && route.authorizer_id == aws_apigatewayv2_authorizer.users.id && route.authorization_scopes == toset(["aws.cognito.signin.user.admin"])])
     error_message = "Every admin route, including step-up and email, must require Cognito access tokens."
   }
@@ -194,6 +198,10 @@ run "admin_no_send_prerequisites_without_ses_inputs" {
   variables {
     enable_admin            = true
     admin_cognito_client_id = "fixtureadminclient"
+  }
+  assert {
+    condition     = !output.admin_email_testing_enabled && aws_lambda_function.admin["admin"].environment[0].variables.ADMIN_EMAIL_TESTING_ENABLED == "false"
+    error_message = "No-send status and publishing checks must receive an explicit false email-test gate."
   }
   assert {
     condition     = toset(keys(aws_lambda_function.admin)) == toset(["admin"]) && toset(keys(aws_iam_role.admin)) == toset(["admin", "private"]) && toset(keys(aws_apigatewayv2_integration.admin)) == toset(["admin"]) && length(aws_apigatewayv2_route.admin) == 6 && length(aws_lambda_permission.admin_events) == 0 && length(aws_sns_topic_subscription.admin_events) == 0
