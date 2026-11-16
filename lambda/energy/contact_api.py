@@ -20,7 +20,10 @@ def validate(event):
         raw = event.get("body", "")
         if event.get("isBase64Encoded"):
             raw = base64.b64decode(raw, validate=True).decode()
-        if len(raw.encode()) > 10000:
+        # Cover the 5,000-character form contract for UTF-8 JSON, including
+        # multibyte names/messages and JSON-escaped token characters, while
+        # retaining a small independent envelope bound and all field limits.
+        if len(raw.encode()) > 40 * 1024:
             raise ValueError()
         data = json.loads(raw)
         if set(data) != {"id", "name", "email", "subject", "message", "website", "botToken"}:

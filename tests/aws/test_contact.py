@@ -1,5 +1,6 @@
 """Offline only: all AWS and HTTP operations mocked."""
 import importlib
+import base64
 import hashlib
 import json
 import os
@@ -154,6 +155,39 @@ class ContactTests(unittest.TestCase):
                 data = {**self.data, field: value}
                 with self.assertRaises(ApiError): api.validate({**self.event, "body": json.dumps(data)})
         with self.assertRaises(ApiError): api.validate({**self.event, "body": json.dumps({**self.data, "owner": "spoof"})})
+
+    def test_unicode_message_at_character_limit_is_saved_without_email(self):
+        for character in ["ሰ", "\U0001f30d"]:
+            data = {**self.data, "name": character * 100, "subject": character * 150,
+                    "message": character * 5000, "botToken": "fixture-token"}
+            event = {**self.event, "body": json.dumps(data, ensure_ascii=False)}
+            with self.subTest(character=character), patch.object(api, "budget"), patch.object(api, "verify_bot"), patch.object(api, "digest", return_value="hash"), patch.object(api, "get", return_value=None), patch.object(api.boto3, "client") as client:
+                result = api.submit(event)
+                self.assertEqual(result["statusCode"], 202)
+                items = client.return_value.transact_write_items.call_args.kwargs["TransactItems"]
+                self.assertEqual(items[0]["Put"]["Item"]["message"], {"S": data["message"]})
+                self.assertEqual(len(items), 3)
+                client.return_value.send_email.assert_not_called()
+
+    def test_bounded_body_covers_allowed_fields_and_rejects_oversized_envelopes(self):
+        # JSON.stringify emits valid Unicode directly and escapes token control characters.
+        data = {**self.data, "name": "\U0001f30d" * 100, "subject": "\U0001f30d" * 150,
+                "message": "\U0001f30d" * 5000, "botToken": "\x01" * 2048}
+        body = json.dumps(data, ensure_ascii=False)
+        self.assertGreater(len(body.encode()), 32 * 1024)
+        self.assertEqual(api.validate({**self.event, "body": body})["message"], data["message"])
+        for size in [40 * 1024, 40 * 1024 + 1]:
+            padded = body + " " * (size - len(body.encode()))
+            for encoded in [False, True]:
+                raw = base64.b64encode(padded.encode()).decode() if encoded else padded
+                event = {**self.event, "body": raw, "isBase64Encoded": encoded}
+                with self.subTest(bytes=size, base64=encoded):
+                    if size == 40 * 1024:
+                        self.assertEqual(api.validate(event)["message"], data["message"])
+                    else:
+                        with self.assertRaises(ApiError) as error:
+                            api.validate(event)
+                        self.assertEqual(error.exception.status, 400)
 
     def test_turnstile_requires_success_hostname_and_action(self):
         with patch.object(api, "secrets", return_value={"turnstile_secret": "mock"}), patch.object(api.urllib.request, "urlopen") as call:
