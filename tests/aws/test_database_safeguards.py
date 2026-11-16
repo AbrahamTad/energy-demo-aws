@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -17,6 +19,59 @@ def load(name, relative):
 seed = load("seed", "scripts/aws/seed_public_energy.py")
 smoke = load("smoke", "scripts/aws/publish_frontend.py")
 guard = load("database_guard", "scripts/aws/check_plan.py")
+
+
+class PublishingSmokeTests(unittest.TestCase):
+    def publish(self, email_enabled, email_status, admin_status=401):
+        site = "https://fixture.cloudfront.net"
+        outputs = {"frontend_bucket": {"value": "fixture-bucket"},
+                   "cloudfront_distribution_id": {"value": "FIXTURE"},
+                   "site_url": {"value": site}, "admin_enabled": {"value": True},
+                   "admin_email_testing_enabled": {"value": email_enabled}}
+        requested = []
+
+        def open_url(url, timeout):
+            requested.append(url)
+            if url in {site, site + "/admin"}:
+                body = b'<div id="root"></div>'
+            elif url == site + "/api/energy":
+                body = json.dumps({"project": "EnergyDemo", "status": "working", "records": []}).encode()
+            else:
+                code = 401 if url.endswith("/api/me/energy") else (
+                    email_status if url.endswith("/api/admin/email") else admin_status)
+                if code != 200:
+                    raise HTTPError(url, code, "fixture denial", {}, None)
+                body = b"{}"
+            response = io.BytesIO(body)
+            response.status = 200
+            return response
+
+        with patch.object(smoke.subprocess, "check_output", side_effect=[json.dumps(outputs),
+                json.dumps({"Invalidation": {"Id": "FIXTURE"}})]), \
+                patch.object(smoke.subprocess, "run"), patch.object(smoke, "urlopen", side_effect=open_url), \
+                patch.object(smoke.time, "sleep"):
+            smoke.main()
+        return requested
+
+    def test_no_send_publish_accepts_missing_email_route_and_checks_admin_auth(self):
+        requested = self.publish(False, 404)
+        self.assertIn("https://fixture.cloudfront.net/api/admin/email", requested)
+        self.assertIn("https://fixture.cloudfront.net/api/admin/users", requested)
+        self.assertIn("https://fixture.cloudfront.net/api/admin/records/mine", requested)
+
+    def test_email_enabled_publish_requires_authentication_denial(self):
+        for status in [401, 403]:
+            with self.subTest(status=status):
+                self.publish(True, status)
+
+    def test_publish_rejects_unexpected_or_public_admin_email_route(self):
+        for enabled, status in [(False, 200), (False, 401), (True, 200), (True, 404)]:
+            with self.subTest(enabled=enabled, status=status), self.assertRaises((HTTPError, ValueError)):
+                self.publish(enabled, status)
+
+    def test_no_send_publish_still_rejects_missing_protected_admin_routes(self):
+        with self.assertRaises(HTTPError):
+            self.publish(False, 404, admin_status=404)
 
 
 class MigrationTests(unittest.TestCase):

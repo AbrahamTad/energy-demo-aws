@@ -120,10 +120,11 @@ resource "aws_lambda_function" "admin" {
       COGNITO_USER_POOL_ID = var.cognito_user_pool_id
       COGNITO_CLIENT_ID    = var.cognito_client_id
       }, each.key == "admin" ? {
-      ADMIN_COGNITO_CLIENT_ID = var.admin_cognito_client_id
-      PUBLIC_ENERGY_TABLE     = aws_dynamodb_table.public_energy.name
-      USER_ENERGY_TABLE       = aws_dynamodb_table.user_energy.name
-      ADMIN_PRIVATE_ROLE_ARN  = aws_iam_role.admin["private"].arn
+      ADMIN_COGNITO_CLIENT_ID     = var.admin_cognito_client_id
+      ADMIN_EMAIL_TESTING_ENABLED = tostring(var.admin_email_testing_enabled)
+      PUBLIC_ENERGY_TABLE         = aws_dynamodb_table.public_energy.name
+      USER_ENERGY_TABLE           = aws_dynamodb_table.user_energy.name
+      ADMIN_PRIVATE_ROLE_ARN      = aws_iam_role.admin["private"].arn
       } : {}, each.key == "email" ? {
       ADMIN_EMAIL_TESTING_ENABLED   = tostring(var.admin_email_testing_enabled)
       ADMIN_EMAIL_SENDER            = var.admin_email_sender
@@ -193,3 +194,4 @@ resource "aws_cloudfront_function" "admin_entry" {
 }
 
 output "admin_enabled" { value = var.enable_admin }
+output "admin_email_testing_enabled" { value = var.admin_email_testing_enabled }

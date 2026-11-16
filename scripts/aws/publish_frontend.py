@@ -65,19 +65,24 @@ def main():
                 with urlopen(site + "/api/me/energy", timeout=15):
                     raise ValueError("Private API accepted an anonymous request")
             except HTTPError as error:
-                if error.code not in (401, 403):
-                    raise
+                with error:
+                    if error.code not in (401, 403):
+                        raise
             if outputs.get("admin_enabled", {}).get("value") is True:
                 with urlopen(site + "/admin", timeout=15) as response:
                     if response.status != 200 or b'<div id="root">' not in response.read():
                         raise ValueError("Admin entry smoke test failed")
-                for path in ["/api/admin/users", "/api/admin/records/mine", "/api/admin/email"]:
+                denials = {"/api/admin/users": (401, 403), "/api/admin/records/mine": (401, 403),
+                           "/api/admin/email": (401, 403) if outputs.get(
+                               "admin_email_testing_enabled", {}).get("value") is True else (404,)}
+                for path, expected_codes in denials.items():
                     try:
                         with urlopen(site + path, timeout=15):
                             raise ValueError("Admin API accepted an anonymous request")
                     except HTTPError as error:
-                        if error.code not in (401, 403):
-                            raise
+                        with error:
+                            if error.code not in expected_codes:
+                                raise
             print("Frontend/public database API: HTTP 200 and valid public schema; private API rejects anonymous access.")
             print("Site:", site)
             return
