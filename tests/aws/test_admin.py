@@ -62,6 +62,7 @@ class AdminTests(unittest.TestCase):
         self.keys = patch.object(energy_auth.PyJWKClient, "get_signing_key_from_jwt", return_value=SimpleNamespace(key=self.key.public_key()))
         self.keys.start(); self.addCleanup(self.keys.stop)
         self.cognito = MagicMock()
+        self.cognito.describe_user_pool.return_value = {"UserPool": {"Id": POOL}}
         self.cognito.get_user.return_value = {"UserAttributes": [{"Name": "sub", "Value": OWNER}]}
         self.cognito.admin_get_user.return_value = {"Enabled": True, "Username": "canonical-user",
             "UserAttributes": [{"Name": "sub", "Value": OWNER}], "UserMFASettingList": ["SOFTWARE_TOKEN_MFA"],
@@ -220,6 +221,43 @@ class AdminTests(unittest.TestCase):
         second = self.call("GET /api/admin/records/public", query={"cursor": value["next_cursor"]})[1]
         self.assertEqual(len(second["records"]), 1); self.assertIsNone(second["next_cursor"])
         self.assertNotIn("hidden", json.dumps(value))
+
+    def test_status_reports_disabled_email_without_ses_reads_when_gate_is_off(self):
+        self.ses.get_account.return_value = {"SendingEnabled": True}
+        for value in [None, "false", "TRUE", "1", ""]:
+            with self.subTest(value=value), patch.dict(os.environ):
+                if value is None:
+                    os.environ.pop("ADMIN_EMAIL_TESTING_ENABLED", None)
+                else:
+                    os.environ["ADMIN_EMAIL_TESTING_ENABLED"] = value
+                status, result = self.call("GET /api/admin/status")
+                self.assertEqual(status, 200)
+                self.assertEqual(result["services"]["email"], "disabled")
+                self.ses.get_account.assert_not_called()
+        self.ses.send_email.assert_not_called()
+
+    def test_status_requires_account_sending_enabled_when_email_gate_is_on(self):
+        for value, expected in [(True, "enabled"), (False, "disabled"),
+                                (None, "disabled"), ("true", "disabled"), (1, "disabled")]:
+            with self.subTest(account_sending=value):
+                self.ses.get_account.return_value = {"SendingEnabled": value}
+                self.ses.get_account.reset_mock()
+                status, result = self.call("GET /api/admin/status")
+                self.assertEqual(status, 200)
+                self.assertEqual(result["services"]["email"], expected)
+                self.ses.get_account.assert_called_once_with()
+        self.ses.send_email.assert_not_called()
+
+    def test_status_reports_unavailable_on_ses_failure_when_email_gate_is_on(self):
+        failures = [ClientError({"Error": {"Code": "AccessDeniedException"}}, "GetAccount"),
+                    EndpointConnectionError(endpoint_url="https://ses.invalid")]
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                self.ses.get_account.side_effect = failure
+                status, result = self.call("GET /api/admin/status")
+                self.assertEqual(status, 200)
+                self.assertEqual(result["services"]["email"], "unavailable")
+        self.ses.send_email.assert_not_called()
 
     def test_disabled_email_cannot_read_reserve_or_send_even_when_called_directly(self):
         for value in [None, "false", "TRUE", "1", ""]:

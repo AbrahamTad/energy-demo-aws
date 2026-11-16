@@ -2,13 +2,77 @@
 
 ## Release baseline
 
-Admin source is isolated on `feature/admin-release-preparation`, based on main
-`7bc602bc4dada693dc6600bcba679e2d4b9a2df8` (merged compatibility-test PR #2).
-The solo-owner Plan/Apply safeguards are already merged. Admin source remains
-uncommitted and no Admin AWS provisioning/deployment is authorized by this file.
-Historical normal-app workflow success is not evidence of current AWS drift.
-Use fresh identity/bootstrap/application saved plans; do not reuse older approvals.
-Local artifacts contain uncommitted source and must never be deployed directly.
+Admin source was merged in PR #3; Contact/Turnstile followed in PR #4. The
+solo-owner Plan/Apply safeguards are also merged. Source availability and the
+completed IAM boundary preparation do not establish deployment readiness.
+No AWS operation or activation is authorized by this document. Use current
+identity, state ownership and drift evidence before any separately approved plan;
+never reuse a completed plan or an approval for a different operation.
+Any release must rebuild reviewed code and follow the saved-plan/artifact guards.
+
+## Read-only readiness checkpoint: 13 November 2026
+
+This inventory concerns account `628582070745`, region `eu-north-1`. It is a
+dated observation, not an ongoing drift check or permission to deploy. No secret
+values, user records, Contact messages or group membership were inspected.
+
+| Dependency | Observed state | Remaining gate |
+| --- | --- | --- |
+| Bootstrap IAM | Two Admin boundaries and all five Contact boundaries exist, with no consumers. The approved boundary-only Apply completed; authoritative bootstrap state advanced to serial 34. | Preserve the original backend, state and backups. Do not reapply the completed plan. |
+| Existing application | Public/personal Lambdas and tables are active. Tables are deletion protected; execution roles retain their separate boundaries. | A source merge or successful build does not deploy Admin/Contact or establish application-state freshness. |
+| Admin/Contact application | Admin/Contact execution roles, Lambdas and their control/Contact tables are absent. | Resolve authoritative application-state ownership before a separately approved application plan. |
+| Cognito | Existing Lite pool has optional MFA and software-token support. The `energy-demo-admin` group and `energy-demo-admin-step-up` client exist. | Presence alone does not verify client flows, token revocation, per-user TOTP or membership. Do not recreate these resources. Karl remains ON HOLD. |
+| Contact secrets | Metadata lookup reports `energy-demo/contact` absent. Repository secret name `AWS_CONTACT_ORIGIN_TOKEN` is also absent. | Separately approve the runtime secret and independent origin credential. Never put values in logs, Git or frontend configuration. |
+| Turnstile | Repository public site-key variable is configured. | Cloudflare Managed mode, approved hostname and secret/key pairing remain unverified; see the [Contact Turnstile guide](CONTACT-TURNSTILE.md). |
+| Contact monitoring/delivery | Configured alarm topic exists with zero confirmed or pending subscriptions. Contact queues, event topic and SES configuration set are absent. | A topic ARN alone is insufficient: establish working approved alarm subscribers and delivery dependencies separately. |
+| SES | Account is in sandbox with account sending enabled. Admin SES configuration set is absent. | Account status does not override IAM denies or authorize sending. Sender/recipient verification and event delivery remain unverified. |
+| GitHub configuration | Admin/Contact activation variables and Admin email-test variable are unset, defaulting to false. Contact sending/customer-email variables are false. | Keep these gates off. CI expansion, deployment and activation require separate review/approval. |
+
+No client-secret response or secret value was requested during this inventory.
+Admin has no Secrets Manager prerequisite of its own; the secret blockers above
+belong to Contact. Inventory absence is not permission to create a resource
+without resolving its authoritative state ownership.
+
+## No-send preparation and deployment order
+
+Bootstrap and application roots have separate `enable_admin` inputs. Enabling
+bootstrap preparation does not enable the application. Keep
+`admin_email_testing_enabled=false` in both roots for no-send review.
+
+1. **Preserve completed bootstrap work.** No-send preparation needs only
+   `admin-admin-boundary` and `admin-private-boundary`, under
+   `/energy-demo-bootstrap/`. Both explicitly deny SES sending. Preserve the
+   five Contact boundaries. Bootstrap `enable_admin_ci=false` and
+   `enable_contact_ci=false` keep CI expansion gated. Creating boundaries grants
+   no application role or deployment capability by itself.
+2. **Verify existing identity prerequisites.** Reconcile the existing group and
+   dedicated client with the identity root's authoritative state. Separately
+   verify client flows and token-revocation settings without exposing client
+   secrets. Identity changes require explicit approval; Karl remains ON HOLD.
+3. **Review a separately authorized application plan.** App defaults remain
+   `enable_admin=false`. A proposed no-send Admin plan uses the existing dedicated
+   client ID, with email testing false. The mock-tested shape has two execution
+   roles (`admin`, `private`), one Admin Lambda/integration and six JWT routes,
+   plus the control table, policies, logs and frontend routing resources. It
+   omits email/events roles, Lambdas, integrations, subscriptions and email
+   routes. Do not assume a fixed total resource count: inspect the saved plan's
+   resource changes, artifact hashes and outputs before approval.
+4. **Keep Contact prerequisites explicit.** Current Contact activation requires
+   `enable_admin=true` in the application root. This dependency does not authorize
+   either feature. Resolve the runtime secret, separate origin credential,
+   Turnstile checks, working alarm subscribers and queue/event dependencies.
+   Keep Contact sending/customer email and Admin email testing false for no-send
+   review. Contact dependencies do not make Admin email testing mandatory.
+5. **Choose the authorized deployment path.** The initial operator path does not
+   require enabling CI. If CI is proposed later, review separate policies,
+   attachments and exact ownership/scopes; do not enable CI flags or broaden
+   permissions to work around a failed plan. Repository activation variables
+   are separate gates, not prerequisites for local tests.
+6. **Approve execution separately.** Reconfirm account, authoritative state,
+   ownership, no competing writers and an exclusive no-write window. Bind
+   approval to the exact saved plan/hash and scope. Preserve manual-dispatch,
+   OIDC, artifact, freshness, replay and state-locking safeguards. Post-deployment
+   tests that write proofs, audit data or records also need an approved scope.
 
 ## Implemented boundary
 
@@ -43,7 +107,14 @@ Local artifacts contain uncommitted source and must never be deployed directly.
 
 ## SES safety and status
 
-The operator selects a fixed sender and 1–5 individually SES-verified recipient
+The behavior below applies only to separately enabled Admin email testing.
+No-send mode retains explicit SES sending denies on its policies and boundaries.
+The Admin status endpoint reports email disabled without querying SES when the
+application email-test gate is off. With that gate on, it reports enabled only
+for an explicit account `SendingEnabled=true`; SES inspection failures report
+unavailable. This status does not verify recipients or authorize a send.
+
+For email testing, the operator selects a fixed sender and 1–5 SES-verified recipient
 addresses in Stockholm. The backend checks verification at send time. Both its
 IAM policy and operator-managed permissions boundary pin sender and recipients.
 The fixed plain-text test message accepts no subject, body, attachments, CC or BCC.
@@ -82,37 +153,24 @@ Sources: [KMS pricing](https://aws.amazon.com/kms/pricing/),
 [SES pricing](https://aws.amazon.com/ses/pricing/),
 [SES encrypted SNS requirements](https://docs.aws.amazon.com/ses/latest/dg/configure-sns-notifications.html).
 
-**No AWS change or email send is authorized by this document.** Future scope:
+**No AWS change or email send is authorized by this document.** After no-send
+readiness is resolved, email testing is a separate proposal:
 
-1. Read-only live inventory/drift check of the base deployment, provider limits,
-   Cognito MFA configuration and SES plan/sandbox. Select the operator, sender
-   and recipient allowlist. Stay in SES sandbox; no production-access request
-   is needed for verified test recipients.
-2. Separately review identity-root changes: one empty admin group and one
-   dedicated client. Enroll and prefer TOTP in Settings before assigning membership outside the
-   application; then sign in again to obtain fresh group claims.
-3. Separately review bootstrap with `enable_admin=true`: four role boundaries,
-   three scoped managed CI policies/four attachments, SES identities and
-   configuration-set event destination, SNS topic/policy and one KMS key.
-   Creating SES identities can send verification mail: approval must cover this.
-   Existing identities must be inventoried/imported rather than blindly recreated.
-4. App defaults remain `enable_admin=false`. After preparation, review repository
-   variables `AWS_ENABLE_ADMIN=true`, `AWS_ADMIN_COGNITO_CLIENT_ID`,
-   `AWS_ADMIN_EMAIL_SENDER`, and `AWS_ADMIN_EMAIL_RECIPIENTS` (JSON array).
-   The sender/allowlist must match the operator-managed boundary configuration.
-   CI gets no Cognito administration, SES sending or DynamoDB item permissions.
-5. Expect 36 new app resources: control table; four roles/policies; three
-   Lambdas/log groups; two integrations; eight routes/invoke grants; one event
-   invoke grant/subscription; one CloudFront Function. Existing CloudFront
-   receives its scoped association; both existing Lambda ZIP hashes update.
-   No energy-table changes, deletions or replacements are intended. Only a real
-   saved plan against inspected state can establish the final deployment scope.
-6. Preserve the current manual-dispatch, OIDC, account/ID, artifact/hash,
-   fresh-run and saved-plan guards. No workflow protection settings are changed.
-   After separately approved deployment, test anonymous/non-admin denial, removed
-   group membership, disabled MFA, token refresh, TOTP step-up, two-admin record
-   isolation/pagination, verified-recipient rejection and one approved real send
-   with delivery events. Production API throttling remains 1 request/sec, burst 2.
+1. Select an approved fixed sender and 1–5 recipients. Inventory existing SES
+   identities first; stay in sandbox. Creating an SES identity may send
+   verification mail and needs explicit approval covering that email.
+2. Separately review `admin_email_testing_enabled=true` in bootstrap and app
+   plans. Bootstrap adds email/events boundaries, approved SES identities,
+   configuration set/event destination, encrypted SNS topic/policy and KMS key.
+   App adds email/events execution roles, functions, routes and event wiring.
+   CI expansion remains independently gated by `enable_admin_ci`.
+3. Review sender/recipient and email-test repository variables only as part of
+   the approved deployment path. Boundary and runtime allowlists must match.
+   CI receives no Cognito administration, SES sending or DynamoDB item access.
+4. Separately authorize live identity tests, TOTP/proof operations, email
+   reservations, real sends and delivery-event testing. Existing tests do not
+   authorize changing membership, sending mail or reading user data.
+   Production API throttling remains 1 request/sec, burst 2.
 
 ## Offline validation
 
@@ -122,8 +180,8 @@ Run the existing Python and frontend test suites, lint and AWS-mode build, then
 modules, tests and the ZIP to temporary directories, then runs backend-disabled
 init, validation and provider-mocked tests for all three roots. It never copies
 live state, `.tfvars`, plans or backend metadata. CI also tests enabled/disabled
-admin configurations and IAM boundaries. Local artifacts contain uncommitted
-source and must not be deployed; any future release must rebuild reviewed code.
+admin configurations and IAM boundaries. Any future release must rebuild reviewed
+code; local artifacts are not release approval or evidence of deployed code.
 
 
 ## Solo-owner CI deployment (merged; Admin activation pending)
@@ -131,4 +189,5 @@ source and must not be deployed; any future release must rebuild reviewed code.
 The owner-only process is documented in [SOLO_DEPLOYMENT.md](../../.github/SOLO_DEPLOYMENT.md).
 Plan and Apply are separate manual dispatches; Apply requires the reviewed run,
 commit, checksum and confirmation phrase. Independent review is no longer used.
-Cognito identity provisioning remains ON HOLD in its separate Terraform root.
+Further identity changes require separate approval in the identity Terraform root;
+Karl's membership remains ON HOLD.
