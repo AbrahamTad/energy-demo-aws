@@ -95,17 +95,24 @@ describe("admin access", () => {
     expect(screen.queryByText("100% uptime")).not.toBeInTheDocument();
   });
 
-  it("paginates the redacted user directory and never selects another user's records", async () => {
+  it("paginates the read-only directory and displays the approved fields", async () => {
     request.mockImplementation(async (path) => {
       if (path === "status") return status;
       if (path === "users")
         return {
-          users: [{ id: "account-one", enabled: true, status: "CONFIRMED" }],
+          users: [{
+            id: "account-one", display_name: "Fixture User",
+            email: "fixture@example.invalid", email_verified: true,
+            enabled: true, status: "CONFIRMED",
+          }],
           next_cursor: "opaque-cursor",
         };
       if (path === "users?cursor=opaque-cursor")
         return {
-          users: [{ id: "account-two", enabled: false, status: "UNCONFIRMED" }],
+          users: [{
+            id: "account-two", display_name: null, email: null,
+            email_verified: false, enabled: false, status: "UNCONFIRMED",
+          }],
           next_cursor: null,
         };
       return { verified: true };
@@ -114,9 +121,19 @@ describe("admin access", () => {
     await screen.findByRole("navigation", { name: "Admin sections" });
     click("Users");
     await screen.findByText("account-one");
+    for (const heading of ["Display name", "Email address", "Account ID", "Account status", "Access", "Email verification"]) {
+      expect(screen.getByRole("columnheader", { name: heading })).toBeInTheDocument();
+    }
+    for (const value of ["Fixture User", "fixture@example.invalid", "Enabled", "CONFIRMED", "Verified"]) {
+      expect(screen.getByText(value)).toBeInTheDocument();
+    }
     click("Next");
     await screen.findByText("account-two");
+    expect(screen.getAllByText("Not provided")).toHaveLength(2);
+    expect(screen.getByText("Not verified")).toBeInTheDocument();
+    expect(screen.getByText("Disabled")).toBeInTheDocument();
     expect(screen.queryByText("account-one")).not.toBeInTheDocument();
+    expect(screen.queryByText("fixture@example.invalid")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Edit user" }),
     ).not.toBeInTheDocument();
