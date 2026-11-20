@@ -365,16 +365,16 @@ function Records({
         <h2>{users ? "User directory" : "Energy records"}</h2>
         <span className="admin-badge">Read only</span>
       </div>
-      <p className="admin-caption">
-        {users
-          ? "Account IDs and account status only. Names, email addresses and phone numbers are hidden."
-          : "Public data or your own records. This view cannot select another account."}
-      </p>
+      {!users && (
+        <p className="admin-caption">
+          Public data or your own records. This view cannot select another account.
+        </p>
+      )}
       {loading && <p role="status">Loading records…</p>}
       {rows && rows.length === 0 && <p>No records in this collection.</p>}
       {page && !!rows?.length && (
         <div className="admin-table-scroll">
-          <table>
+          <table className={users ? "admin-user-table" : undefined}>
             <caption className="sr-only">
               {users ? "User directory" : "Energy records"}, page{" "}
               {history.length}
@@ -382,7 +382,14 @@ function Records({
             <thead>
               <tr>
                 {(users
-                  ? ["Account ID", "Status", "Access"]
+                  ? [
+                      "Display name",
+                      "Email address",
+                      "Account ID",
+                      "Account status",
+                      "Access",
+                      "Email verification",
+                    ]
                   : ["Source", "Production", "Measured at"]
                 ).map((h) => (
                   <th key={h}>{h}</th>
@@ -391,13 +398,24 @@ function Records({
             </thead>
             <tbody>
               {users
-                ? page.users?.map((u) => (
-                    <tr key={u.id}>
-                      <td>
-                        <code>{u.id}</code>
+                ? page.users?.map((u, index) => (
+                    <tr key={u.id ?? index}>
+                      <td className="admin-user-detail">
+                        {u.display_name?.trim() || "Not provided"}
                       </td>
-                      <td>{u.status}</td>
-                      <td>{u.enabled ? "Enabled" : "Disabled"}</td>
+                      <td className="admin-user-detail">
+                        {u.email?.trim() || "Not provided"}
+                      </td>
+                      <td>{u.id ? <code>{u.id}</code> : "Not provided"}</td>
+                      <td>{u.status?.trim() || "Not provided"}</td>
+                      <td>
+                        {u.enabled == null ? "Not provided" : u.enabled ? "Enabled" : "Disabled"}
+                      </td>
+                      <td>
+                        {u.email_verified == null
+                          ? "Not provided"
+                          : u.email_verified ? "Verified" : "Not verified"}
+                      </td>
                     </tr>
                   ))
                 : page.records?.map((r) => (

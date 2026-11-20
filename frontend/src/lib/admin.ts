@@ -47,7 +47,14 @@ export type AdminStatus = {
   private_access: string;
   email_daily_limit: number;
 };
-export type AdminUser = { id: string; status: string; enabled: boolean };
+export type AdminUser = {
+  id: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  status: string | null;
+  enabled: boolean | null;
+  email_verified?: boolean | null;
+};
 export type AdminRecord = {
   source: string;
   production: number;

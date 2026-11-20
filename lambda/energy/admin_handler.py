@@ -1,4 +1,5 @@
 """Read-only admin API and server-verified Cognito TOTP step-up."""
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import time
@@ -12,6 +13,69 @@ from energy_auth import verified_claims
 from energy_store import table
 from energy_validation import ApiError, public_record, private_record, record_id, response
 from boto3.dynamodb.conditions import Key
+
+
+DIRECTORY_PAGE_SIZE = 5
+DIRECTORY_ATTRIBUTES = ("name", "email", "email_verified")
+
+
+def directory_attributes(cognito, pool, subject):
+    def projected(attributes):
+        page = cognito.list_users(UserPoolId=pool, Limit=1, Filter=f"sub = {json.dumps(subject)}",
+                                  AttributesToGet=["sub", *attributes])
+        matches = page.get("Users", [])
+        if not matches:
+            return {}
+        user = matches[0]
+        values = {entry["Name"]: entry["Value"] for entry in user.get("Attributes", [])}
+        if values.get("sub") != subject:
+            raise ValueError("Directory subject mismatch")
+        return {name: values.get(name) for name in attributes}
+
+    # Cognito rejects a projection when a requested optional attribute is unset.
+    # Fall back to one attribute at a time without requesting a full profile.
+    try:
+        return projected(DIRECTORY_ATTRIBUTES)
+    except ClientError as error:
+        if error.response["Error"]["Code"] != "InvalidParameterException":
+            raise
+    available = {}
+    for attribute in DIRECTORY_ATTRIBUTES:
+        try:
+            available.update(projected((attribute,)))
+        except ClientError as error:
+            if error.response["Error"]["Code"] != "InvalidParameterException":
+                raise
+    return available
+
+
+def user_directory(cursor, owner, route):
+    pool = os.environ["COGNITO_USER_POOL_ID"]
+    cognito = client("cognito-idp")
+    options = {"UserPoolId": pool, "Limit": DIRECTORY_PAGE_SIZE, "AttributesToGet": ["sub"]}
+    if cursor:
+        options["PaginationToken"] = cursor
+    page = cognito.list_users(**options)
+
+    def row(user):
+        subject = next((attribute["Value"] for attribute in user.get("Attributes", [])
+                        if attribute["Name"] == "sub"), None)
+        attributes = directory_attributes(cognito, pool, subject) if subject else {}
+        return {
+            "id": subject,
+            "display_name": attributes.get("name") or None,
+            "email": attributes.get("email") or None,
+            "status": user.get("UserStatus"),
+            "enabled": user.get("Enabled"),
+            "email_verified": {"true": True, "false": False}.get(attributes.get("email_verified")),
+        }
+
+    rows = page.get("Users", [])
+    if len(rows) > DIRECTORY_PAGE_SIZE:
+        raise ValueError("Directory page exceeded its limit")
+    with ThreadPoolExecutor(max_workers=DIRECTORY_PAGE_SIZE) as workers:
+        users = list(workers.map(row, rows))
+    return {"users": users, "next_cursor": next_cursor(page.get("PaginationToken"), owner, route)}
 
 
 def session(event, claims, user):
@@ -119,14 +183,7 @@ def lambda_handler(event, context):
         if route == "GET /api/admin/session":
             result = {"verified": True}
         elif route.endswith("/users"):
-            options = {"UserPoolId": os.environ["COGNITO_USER_POOL_ID"], "Limit": 25, "AttributesToGet": ["sub"]}
-            if cursor:
-                options["PaginationToken"] = cursor
-            page = client("cognito-idp").list_users(**options)
-            # Deliberately exclude email, name, phone, raw attributes and username.
-            users = [{"id": next((a["Value"] for a in u.get("Attributes", []) if a["Name"] == "sub"), ""),
-                      "status": u.get("UserStatus", "UNKNOWN"), "enabled": bool(u.get("Enabled"))} for u in page.get("Users", [])]
-            result = {"users": users, "next_cursor": next_cursor(page.get("PaginationToken"), owner, route)}
+            result = user_directory(cursor, owner, route)
         elif route.endswith("/public"):
             options = {"KeyConditionExpression": Key("dataset").eq("PUBLIC"), "Limit": 25}
             if cursor:

@@ -91,9 +91,11 @@ bootstrap preparation does not enable the application. Keep
   lasts at most 15 minutes and never outlives the original access token.
   Passwords and returned tokens are never stored or logged. Challenge sessions
   expire logically after three minutes; five step-up calls/admin/UTC minute.
-- Read-only directory pages contain only sub, enabled and account status. Cognito
-  is asked for only the `sub` attribute. Pages are capped at 25. Opaque cursors
-  bind to actor and route, expire after 15 minutes and cannot select an owner.
+- Read-only directory pages contain display name, email, account ID, account
+  status, enabled state and email verification when available. Cognito requests
+  project only the account ID and those optional attributes. Pages are capped
+  at five. Opaque cursors bind to actor and route, expire after 15 minutes and
+  cannot select an owner. Directory responses use private, no-store caching.
 - Public records query only `PUBLIC`. Personal records use a short-lived assumed
   read-only role with `dynamodb:LeadingKeys = aws:PrincipalTag/user_sub`. The
   admin Lambda has no direct private-table data permissions. No Scan, user

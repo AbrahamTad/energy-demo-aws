@@ -138,6 +138,12 @@
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
+.admin-user-table td.admin-user-detail {
+  min-width: 9rem;
+  max-width: 16rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .admin-pagination {
   display: flex;
   align-items: center;

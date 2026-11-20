@@ -177,22 +177,86 @@ class AdminTests(unittest.TestCase):
         self.assertEqual(self.call("POST /api/admin/session", {"challenge": value["challenge"], "code": "123456"})[0], 403)
         self.cognito.admin_respond_to_auth_challenge.assert_not_called()
 
-    def test_user_directory_redacts_pii_and_wraps_cursor(self):
-        self.cognito.list_users.return_value = {"Users": [{"Username": "private@example.invalid", "Enabled": True,
-            "Attributes": [{"Name": "sub", "Value": OTHER}, {"Name": "email", "Value": "private@example.invalid"}], "UserStatus": "CONFIRMED"}], "PaginationToken": "sensitive-upstream-token"}
-        status, value = self.call("GET /api/admin/users")
-        self.assertEqual(status, 200)
-        self.assertEqual(set(value["users"][0]), {"id", "status", "enabled"})
-        self.assertNotIn("private@example.invalid", json.dumps(value))
+    def test_user_directory_projects_only_approved_fields_and_wraps_cursor(self):
+        def list_users(**options):
+            self.assertEqual(options["UserPoolId"], POOL)
+            if "Filter" not in options:
+                self.assertEqual(options["AttributesToGet"], ["sub"])
+                self.assertEqual(options["Limit"], 5)
+                return {"Users": [{"Username": "hidden-username", "Enabled": True, "UserStatus": "CONFIRMED",
+                    "Attributes": [{"Name": "sub", "Value": OTHER}]}],
+                    "PaginationToken": "sensitive-upstream-token"}
+            self.assertEqual(options["Filter"], f'sub = "{OTHER}"')
+            self.assertEqual(options["AttributesToGet"], ["sub", "name", "email", "email_verified"])
+            self.assertEqual(options["Limit"], 1)
+            return {"Users": [{"Attributes": [{"Name": name, "Value": value} for name, value in (
+                ("sub", OTHER), ("name", "Fixture User"), ("email", "fixture@example.invalid"),
+                ("email_verified", "true"), ("phone_number", "hidden-phone"), ("custom:secret", "hidden-value"),
+            )]}]}
+        self.cognito.list_users.side_effect = list_users
+        response = admin.lambda_handler(self.event("GET /api/admin/users"), None)
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["headers"]["Cache-Control"], "no-store, private")
+        value = json.loads(response["body"])
+        self.assertEqual(value["users"], [{"id": OTHER, "display_name": "Fixture User",
+            "email": "fixture@example.invalid", "status": "CONFIRMED", "enabled": True, "email_verified": True}])
+        self.assertNotIn("hidden-", response["body"])
         self.assertNotIn("sensitive-upstream-token", json.dumps(value))
+        for audit in self.db.scan()["Items"]:
+            self.assertNotIn("fixture@example.invalid", json.dumps(audit, default=str))
+            self.assertNotIn("Fixture User", json.dumps(audit, default=str))
         cursor = value["next_cursor"]
         self.assertEqual(self.call("GET /api/admin/users", query={"cursor": cursor})[0], 200)
-        self.assertEqual(self.cognito.list_users.call_args.kwargs["PaginationToken"], "sensitive-upstream-token")
+        self.assertEqual(self.cognito.list_users.call_args_list[-2].kwargs["PaginationToken"], "sensitive-upstream-token")
         self.assertEqual(self.call("GET /api/admin/records/public", query={"cursor": cursor})[0], 400)
         self.assertEqual(self.call("GET /api/admin/users", query={"cursor": str(uuid4())})[0], 400)
         self.db.update_item(Key={"pk": "CURSOR#" + cursor}, UpdateExpression="SET #owner=:other",
             ExpressionAttributeNames={"#owner": "owner"}, ExpressionAttributeValues={":other": OTHER})
         self.assertEqual(self.call("GET /api/admin/users", query={"cursor": cursor})[0], 400)
+
+    def test_user_directory_preserves_available_values_when_optional_attributes_are_missing(self):
+        subject = {"Name": "sub", "Value": OTHER}
+        def list_users(**options):
+            projected = options["AttributesToGet"]
+            if projected == ["sub"]:
+                return {"Users": [{"Enabled": False, "Attributes": [subject]}]}
+            if projected in (["sub", "name", "email", "email_verified"], ["sub", "name"]):
+                raise ClientError({"Error": {"Code": "InvalidParameterException", "Message": "Missing projected attribute"}},
+                                  "ListUsers")
+            optional = {"email": "fixture@example.invalid", "email_verified": "false"}
+            self.assertEqual(options["Filter"], f'sub = "{OTHER}"')
+            return {"Users": [{"Attributes": [subject, {"Name": projected[1], "Value": optional[projected[1]]}]}]}
+        self.cognito.list_users.side_effect = list_users
+        self.assertEqual(self.call("GET /api/admin/users"), (200, {"users": [{
+            "id": OTHER, "status": None, "enabled": False, "display_name": None,
+            "email": "fixture@example.invalid", "email_verified": False,
+        }], "next_cursor": None}))
+        self.assertEqual(self.cognito.list_users.call_count, 5)
+
+    def test_user_directory_checks_authorization_before_querying_cognito(self):
+        route = "GET /api/admin/users"
+        self.token = ""
+        self.assertEqual(self.call(route)[0], 401)
+        self.token = self.jwt(**{"cognito:groups": []})
+        self.assertEqual(self.call(route)[0], 403)
+        self.token = self.jwt()
+        self.cognito.admin_list_groups_for_user.return_value = {"Groups": []}
+        self.assertEqual(self.call(route)[0], 403)
+        self.cognito.admin_list_groups_for_user.return_value = {"Groups": [{"GroupName": "energy-demo-admin"}]}
+        self.db.delete_item(Key={"pk": "PROOF#" + common.token_key(self.event())})
+        self.assertEqual(self.call(route)[0], 428)
+        self.cognito.list_users.assert_not_called()
+
+    def test_user_directory_fails_closed_on_an_unrelated_projection_error(self):
+        self.cognito.list_users.side_effect = [
+            {"Users": [{"Attributes": [{"Name": "sub", "Value": OTHER}]}]},
+            ClientError({"Error": {"Code": "AccessDeniedException", "Message": "hidden-provider-details"}},
+                        "ListUsers"),
+        ]
+        status, response = self.call("GET /api/admin/users")
+        self.assertEqual(status, 503)
+        self.assertEqual(response, {"error": "The admin service is temporarily unavailable."})
+        self.assertEqual(self.cognito.list_users.call_count, 2)
 
     def test_reject_owner_selection_and_all_user_record_routes(self):
         for query in [{"user_sub": OTHER}, {"owner": OTHER}, {"limit": "10000"}]:
